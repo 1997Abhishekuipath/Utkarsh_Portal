@@ -32,12 +32,10 @@ services:
     container_name: hsi_backend
     environment:
       DATABASE_URL: "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@db:5432/${DB_NAME:-hsi_portal}"
-      JWT_SECRET:        ${JWT_SECRET:-change-me-to-a-random-32-char-string}
-      ADMIN_EMAIL:       ${ADMIN_EMAIL:-admin@hsi.com}
-      ADMIN_PASSWORD:    ${ADMIN_PASSWORD:-Admin@123}
-      MONGO_URL:         "mongodb://localhost:27017"
-      DB_NAME:           ${DB_NAME:-hsi_portal}
-      CORS_ORIGINS:      ${CORS_ORIGINS:-*}
+      JWT_SECRET:     ${JWT_SECRET:-change-me-to-a-random-32-char-string}
+      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@hsi.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
+      CORS_ORIGINS:   ${CORS_ORIGINS:-*}
     depends_on:
       db:
         condition: service_healthy

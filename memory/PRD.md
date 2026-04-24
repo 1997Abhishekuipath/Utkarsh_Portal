@@ -79,6 +79,19 @@ Hitachi Systems India (HSI) Enterprise Platform — a unified employee workspace
 
 ---
 
+## Docker Production Deployment (Feb 2026 — Complete)
+- [x] `/app/docker-compose.yml` — 4-service stack: db, backend, frontend, nginx (reverse proxy)
+- [x] `/app/backend/Dockerfile` — multi-stage Python 3.11-slim, non-root user, healthcheck, uvicorn workers
+- [x] `/app/frontend/Dockerfile` — multi-stage Node build → nginx:1.25-alpine serve
+- [x] `/app/frontend/nginx-app.conf` — SPA routing config inside frontend container
+- [x] `/app/docker/nginx/nginx.conf` — top-level reverse proxy: HTTP→HTTPS redirect, TLS 1.2/1.3, HSTS, `/api/*` → backend, `/*` → frontend, rate-limiting, security headers
+- [x] `/app/docker/nginx/ssl/` — placeholder dir with README (user supplies `fullchain.pem` + `privkey.pem`)
+- [x] `/app/.env.example` — template for DB, JWT, admin, CORS, REACT_APP_BACKEND_URL
+- [x] `/app/setup.sh` — one-click `up/down/logs/status/restart` with full preflight: docker daemon check, compose detection (v2 & legacy), .env validation, placeholder-default detection, **hard-fails if SSL certs missing (no self-signed fallback per user spec)**
+- First-run flow: `cp .env.example .env` → fill values → drop certs in `docker/nginx/ssl/` → `./setup.sh`
+
+---
+
 ## Seed Users
 | Email | Password | Role |
 |-------|----------|------|

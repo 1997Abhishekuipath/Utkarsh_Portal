@@ -9,12 +9,21 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package manifests first (for Docker layer caching)
-COPY package.json yarn.lock ./
+# yarn.lock* uses a wildcard so the build still works if the lockfile is
+# missing from the repo (BuildKit allows zero matches for a glob).
+COPY package.json ./
+COPY yarn.lock* ./
 
 # Install all dependencies (including devDeps needed for build)
-# --frozen-lockfile ensures exact versions from yarn.lock
-# --network-timeout handles slow package downloads
-RUN yarn install --frozen-lockfile --network-timeout 300000 \
+# Use --frozen-lockfile when yarn.lock is present (reproducible build),
+# otherwise fall back to a regular install with a warning.
+RUN if [ -f yarn.lock ]; then \
+      echo "Using yarn.lock — reproducible install" && \
+      yarn install --frozen-lockfile --network-timeout 300000; \
+    else \
+      echo "WARNING: yarn.lock missing — running 'yarn install' (not reproducible). Commit frontend/yarn.lock for deterministic builds." && \
+      yarn install --network-timeout 300000; \
+    fi \
     && yarn cache clean
 
 # Copy remaining source files

@@ -43,7 +43,7 @@ const APPS = [
   { id:"learning",       name:"Learning & Development",     desc:"200-level mentoring, course development, HSI certifications and L&D portfolio.", from:"#DC2626", to:"#7F1D1D", count:45, countLabel:"COURSES",   action:"ENROLL",    stat:"12 ACTIVE",Icon:GraduationCap },
   { id:"analytics",      name:"Analytics & Reports",        desc:"Cross platform analytics, XP trends, incentive reporting, KPI dashboards.", from:"#1E3A8A", to:"#1E40AF", count:28, countLabel:"REPORTS",   action:"INSIGHTS",  stat:"3 NEW",    Icon:BarChart2 },
   { id:"nps-csat",       name:"NPS & CSAT",                 desc:"Voice of Customer Intelligence. Real-time NPS/CSAT dashboards, survey builder, account health and AI-categorised verbatims.", from:"#0284C7", to:"#0C4A6E", count:62, countLabel:"NPS SCORE", action:"INSIGHTS",  stat:"+62 NPS",  Icon:TrendingUp },
-  { id:"survey-builder", name:"Survey Builder",             desc:"Design and deploy intelligent survey campaigns. Multi-channel distribution with real-time response tracking.", from:"#F97316", to:"#C2410C", count:24, countLabel:"SURVEYS",   action:"CREATE",    stat:"142 RES",  Icon:ClipboardList },
+  { id:"survey-builder", name:"Meeting & Task Follow-up", desc:"Action Intelligence Platform. Track meetings, escalation heatmap and action ownership with BCG-style real-time risk distribution.", from:"#374151", to:"#111827", count:6, countLabel:"OPEN ACTIONS", action:"DASHBOARD", stat:"2 OVERDUE", Icon:ClipboardList },
   { id:"email-campaigns",name:"Email Campaigns",            desc:"Automate customer communication workflows. Drip campaigns, NPS follow-ups, and event-triggered emails.", from:"#6366F1", to:"#4338CA", count:18, countLabel:"CAMPAIGNS", action:"LAUNCH",    stat:"68% OPEN", Icon:Mail },
 ];
 

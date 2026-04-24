@@ -6,6 +6,7 @@ import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import AppPage from "./pages/AppPage";
 import AdminPage from "./pages/AdminPage";
+import NPSCsatPage from "./pages/apps/NPSCsatPage";
 
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { user, loading } = useAuth();
@@ -32,6 +33,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/apps/nps-csat" element={<ProtectedRoute><NPSCsatPage /></ProtectedRoute>} />
           <Route path="/apps/:appId" element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />

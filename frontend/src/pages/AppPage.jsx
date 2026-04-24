@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   BookOpen, Calendar, Users, LayoutDashboard, GitBranch,
   Shield, UserCheck, GraduationCap, BarChart2, ArrowLeft,
-  Building2, LogOut, Settings, Plus, Search
+  Building2, LogOut, Settings, Plus, Search, ClipboardList, Mail
 } from "lucide-react";
 
 const APP_CONFIG = {
@@ -60,6 +60,18 @@ const APP_CONFIG = {
     gradient: "from-blue-900 to-indigo-900", count: 28, unit: "Reports",
     desc: "Cross platform analytics, XP trends, incentive reporting, KPI dashboards.",
     stats: [{ label: "Reports", value: 28 }, { label: "New", value: 3 }, { label: "Dashboards", value: 9 }, { label: "Exports", value: 156 }],
+  },
+  "survey-builder": {
+    name: "Survey Builder", Icon: ClipboardList, color: "#F97316",
+    gradient: "from-orange-500 to-orange-700", count: 24, unit: "Surveys",
+    desc: "Design and deploy intelligent survey campaigns. Multi-channel distribution with real-time response tracking.",
+    stats: [{ label: "Surveys", value: 24 }, { label: "Active", value: 8 }, { label: "Responses", value: 142 }, { label: "Avg. Score", value: "4.4" }],
+  },
+  "email-campaigns": {
+    name: "Email Campaigns", Icon: Mail, color: "#6366F1",
+    gradient: "from-indigo-500 to-indigo-700", count: 18, unit: "Campaigns",
+    desc: "Automate customer communication workflows. Drip campaigns, NPS follow-ups, and event-triggered emails.",
+    stats: [{ label: "Campaigns", value: 18 }, { label: "Sent", value: "4.2K" }, { label: "Open Rate", value: "68%" }, { label: "Replies", value: 89 }],
   },
 };
 

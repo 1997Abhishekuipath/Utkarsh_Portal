@@ -10,7 +10,6 @@ yarn-debug.log*
 coverage/
 .git/
 .gitignore
-*.md
-!nginx-app.conf
-public/
-# Keep: package.json, yarn.lock, src/, tailwind.config.js, postcss.config.js, craco.config.js
+README.md
+Dockerfile
+.dockerignore

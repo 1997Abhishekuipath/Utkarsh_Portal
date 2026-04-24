@@ -60,7 +60,7 @@ Hitachi Systems India (HSI) Enterprise Platform — a unified employee workspace
 - [x] / — Home dashboard
 - [x] /apps/:appId — 9 original app placeholder pages
 - [x] /apps/nps-csat — **Full NPS & CSAT page** (dark theme, charts, gauge)
-- [x] /apps/survey-builder — Survey Builder placeholder
+- [x] /apps/survey-builder — **Action Intelligence Platform** (Meeting & Task Follow-up) — white nav, marquee ticker, KPI cards, escalation heatmap, meetings panel
 - [x] /apps/email-campaigns — Email Campaigns placeholder
 - [x] /admin — Admin user management panel
 

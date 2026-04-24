@@ -110,7 +110,7 @@ export default function AppPage() {
       {/* App Header */}
       <div className={`bg-gradient-to-r ${gradient} px-5 py-10`}>
         <div className="max-w-7xl mx-auto">
-          <button data-testid="back-to-dashboard" onClick={() => navigate("/")}
+          <button data-testid="back-to-dashboard-btn" onClick={() => navigate("/")}
             className="flex items-center gap-2 text-white/70 hover:text-white text-sm mb-6 transition-colors">
             <ArrowLeft size={16} /><span>Back to Dashboard</span>
           </button>

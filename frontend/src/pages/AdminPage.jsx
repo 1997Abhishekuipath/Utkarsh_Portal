@@ -13,8 +13,9 @@ const ROLE_COLORS = { admin: "bg-red-100 text-red-700", manager: "bg-blue-100 te
 export default function AdminPage() {
   const { user, logout, authHeader } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers]       = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [users, setUsers]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [statsLoaded, setStatsLoaded] = useState(false);
   const [search, setSearch]     = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [deleteId, setDeleteId] = useState(null);
@@ -23,7 +24,7 @@ export default function AdminPage() {
     axios.get(`${API}/admin/users`, { headers: authHeader() })
       .then(r => setUsers(r.data))
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setStatsLoaded(true); });
   };
 
   useEffect(() => { fetchUsers(); }, []);

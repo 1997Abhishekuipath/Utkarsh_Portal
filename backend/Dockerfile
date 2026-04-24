@@ -24,7 +24,8 @@ COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.
 COPY --from=deps /usr/local/bin /usr/local/bin
 
 # Copy application source
-COPY server.py ./
+COPY server.py seed.py entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 # Create non-root user for security
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
@@ -37,5 +38,4 @@ EXPOSE 8001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/')" || exit 1
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001", \
-     "--workers", "2", "--log-level", "info", "--no-access-log"]
+CMD ["./entrypoint.sh"]

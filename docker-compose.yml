@@ -36,6 +36,7 @@ services:
       ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@hsi.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
       CORS_ORIGINS:   ${CORS_ORIGINS:-*}
+      SKIP_SEED_ON_IMPORT: "1"   # seeding happens in entrypoint.sh → seed.py
     depends_on:
       db:
         condition: service_healthy

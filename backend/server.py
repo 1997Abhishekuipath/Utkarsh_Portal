@@ -120,7 +120,13 @@ def seed_users():
     db.commit()
     db.close()
 
-seed_users()
+# In Docker production, seeding runs via entrypoint.sh → seed.py (before uvicorn).
+# For local dev / supervisor-managed runs, seed on import as well (idempotent).
+if os.environ.get('SKIP_SEED_ON_IMPORT') != '1':
+    try:
+        seed_users()
+    except Exception as e:
+        logging.warning(f"Seed-on-import failed (safe to ignore in Docker): {e}")
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app    = FastAPI(title='HSI Enterprise Portal')

@@ -142,6 +142,7 @@ cmd_up() {
     ok "──────────────────────────────────────────────────────────────────"
     ok "  HSI Enterprise Portal is up!"
     ok "  URL:       ${REACT_APP_BACKEND_URL}"
+    ok "  Ports:     HTTP ${HTTP_PORT:-80}  |  HTTPS ${HTTPS_PORT:-443}"
     ok "  Admin:     ${ADMIN_EMAIL}"
     ok "  Logs:      ./setup.sh logs"
     ok "  Stop:      ./setup.sh down"

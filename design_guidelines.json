@@ -1,0 +1,116 @@
+{
+  "theme": "LIGHT",
+  "archetype": "Archetype 4 (Swiss & High-Contrast)",
+  "typography": {
+    "headings": {
+      "font_family": "Outfit",
+      "weights": ["600", "700"],
+      "usage": "Use for all H1-H4. Tight letter spacing (tracking-tight). MUST NOT use Inter for headings."
+    },
+    "body": {
+      "font_family": "IBM Plex Sans",
+      "weights": ["400", "500"],
+      "usage": "Use for all paragraphs, data tables, and generic UI text."
+    },
+    "scales": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl",
+      "h3": "text-xl sm:text-2xl",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-sm md:text-base",
+      "small": "text-xs"
+    }
+  },
+  "colors": {
+    "background": "#F1F5F9",
+    "surface": "#FFFFFF",
+    "primary": "#CC0000",
+    "primary_hover": "#A30000",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569",
+    "border": "#E2E8F0",
+    "app_card_headers": {
+      "red": "#EF4444",
+      "green": "#10B981",
+      "blue": "#3B82F6",
+      "amber": "#F59E0B",
+      "purple": "#8B5CF6",
+      "dark_gray": "#475569",
+      "teal": "#14B8A6",
+      "brown": "#A52A2A",
+      "dark_blue": "#1E3A8A"
+    }
+  },
+  "layout": {
+    "grid_system": "MODE B: THE 'CONTROL ROOM' GRID",
+    "spacing": "Generous spacing, gap-4 to gap-6 for grids. Containers use p-4 or p-6.",
+    "borders": "1px solid border-border. Max border radius 8px (rounded-lg).",
+    "shadows": "Ambient subtle shadows on hover for cards: shadow-md. Default state has shadow-sm or no shadow."
+  },
+  "components": {
+    "hero_header": {
+      "style": "Vivid red background (#CC0000). Overlay text must be white for contrast. Use abstract red background image with black/20 overlay.",
+      "layout": "Flexbox, distinct personalized greeting and quick stats."
+    },
+    "cards": {
+      "style": "Flat solid surfaces. 1px border. High density data. Do not overuse shadows.",
+      "padding": "p-4 or p-6."
+    },
+    "tabs": {
+      "style": "Horizontal scrollable tabs or inline flex tabs with sharp indicator. Active state uses primary red."
+    },
+    "data_viz": {
+      "style": "Circular progress for MY SCORE. High contrast colors."
+    }
+  },
+  "media": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1620689998950-a1160f60e824?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHN1YnRsZSUyMHJlZCUyMHRleHR1cmUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NzAyMjkyNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract red background for the hero section."
+      },
+      {
+        "category": "user_avatar_1",
+        "url": "https://images.unsplash.com/photo-1758691737605-69a0e78bd193?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBlbXBsb3llZSUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MHx8fHwxNzc3MDIyOTIyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar for active user or leaderboard top 1."
+      },
+      {
+        "category": "user_avatar_2",
+        "url": "https://images.unsplash.com/photo-1758691737587-7630b4d31d16?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBlbXBsb3llZSUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MHx8fHwxNzc3MDIyOTIyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar for leaderboard top 2."
+      },
+      {
+        "category": "user_avatar_3",
+        "url": "https://images.unsplash.com/photo-1758691737644-ef8be18256c3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHw0fHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBlbXBsb3llZSUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MHx8fHwxNzc3MDIyOTIyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar for leaderboard top 3."
+      },
+      {
+        "category": "user_avatar_4",
+        "url": "https://images.unsplash.com/photo-1758691737610-1f18e008f5f2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBlbXBsb3llZSUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MHx8fHwxNzc3MDIyOTIyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar for activity feed."
+      },
+      {
+        "category": "announcement_image",
+        "url": "https://images.unsplash.com/photo-1760246964044-1384f71665b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwxfHxjb3Jwb3JhdGUlMjBvZmZpY2UlMjBidWlsZGluZyUyMG1vZGVybnxlbnwwfHx8fDE3NzcwMjI5MjJ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Modern office building for announcements section."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use .js/.jsx extensions for all React components. Do NOT use TypeScript (.ts/.tsx).",
+    "Use pure HTML + Tailwind for complex/grid layouts, use Shadcn selectively for interactive UI like Tabs and Dialogs.",
+    "Implement the 'Control Room' grid for the 'ALL APPLICATIONS' section (grid-cols-1 md:grid-cols-2 lg:grid-cols-3) to maintain strict hierarchy.",
+    "For the hero header, ensure the #CC0000 background has sufficient contrast with the text. Add a subtle dark gradient overlay if using the provided background image.",
+    "Avoid excessive shadows; rely on 1px borders and distinct padding/margins.",
+    "Ensure the design remains responsive, particularly managing table/grid flows on mobile.",
+    "Add 'data-testid' to all interactive elements for robust testing. Use kebab-case and role-based names (e.g., data-testid='login-submit-button').",
+    "Run 'yarn add @phosphor-icons/react' and use it for dashboard icons.",
+    "Never use generic placeholder images like via.placeholder.com. ONLY use the images provided in this JSON."
+  ],
+  "accessibility": [
+    "All interactive elements MUST have visible focus states.",
+    "Ensure contrast ratios meet APCA/WCAG standards, especially white text on red background.",
+    "Include ARIA labels for icon buttons and visually hidden text where appropriate."
+  ]
+}

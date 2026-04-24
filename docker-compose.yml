@@ -1,0 +1,99 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  HSI Enterprise Portal — Production Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL Database ────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: hsi_db
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-hsi_portal}
+      POSTGRES_USER:     ${DB_USER:-hsi_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hsi_password123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - hsi_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hsi_user} -d ${DB_NAME:-hsi_portal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hsi_backend
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@db:5432/${DB_NAME:-hsi_portal}"
+      JWT_SECRET:        ${JWT_SECRET:-change-me-to-a-random-32-char-string}
+      ADMIN_EMAIL:       ${ADMIN_EMAIL:-admin@hsi.com}
+      ADMIN_PASSWORD:    ${ADMIN_PASSWORD:-Admin@123}
+      MONGO_URL:         "mongodb://localhost:27017"
+      DB_NAME:           ${DB_NAME:-hsi_portal}
+      CORS_ORIGINS:      ${CORS_ORIGINS:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hsi_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── React Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-https://your-domain.com}
+    container_name: hsi_frontend
+    networks:
+      - hsi_network
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Nginx Reverse Proxy ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: hsi_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - hsi_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  hsi_network:
+    driver: bridge

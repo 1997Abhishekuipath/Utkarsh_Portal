@@ -191,7 +191,7 @@ export default function NPSCsatPage() {
               <Zap size={28} className="text-[#CC0000]" />
             </div>
             <h3 className="text-lg font-bold text-white mb-1">{activeTab}</h3>
-            <p className="text-[#4B5563] text-sm">Screenshot pending — this section will be built next.</p>
+            <p className="text-[#4B5563] text-sm">This section is coming soon. Please check back later.</p>
           </div>
         </div>
       ) : (

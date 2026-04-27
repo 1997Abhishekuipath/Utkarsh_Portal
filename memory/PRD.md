@@ -1,131 +1,188 @@
 # HSI Enterprise Portal — PRD
 
 ## Product Overview
-Hitachi Systems India (HSI) Enterprise Platform — a unified employee workspace with JWT auth, 9 enterprise apps, admin panel, and a comprehensive home dashboard.
+HSI Employee Engagement Platform — converging current Enterprise Portal toward the full PRD scope (`HSI-PRD-EEP-2026-v1.0`). V1 is **web-only**; mobile apps deferred to backlog.
 
-**Date Started:** 2025-02  
-**Status:** Phase 1 Complete (Home Page + Auth)
+**Date Started:** 2025-02
+**Status:** Sprint A complete (Auth foundation hardened) · NPS/CSAT + Action Intelligence preserved as deep-dives under Customer pillar
+
+---
+
+## Architecture Decision Log
+
+### ADR-001 — Backend stack: FastAPI (deviation from PRD §2.3 "Node + Express + Prisma")
+**Date:** Feb 2026
+**Decision:** Keep FastAPI + SQLAlchemy + PostgreSQL.
+**Rationale:**
+- Emergent platform's *verified* auth + AWS-SES integration playbooks are FastAPI-native. Going Node would mean writing security-critical auth code without a vetted playbook → measurably less secure, not more.
+- ~3 weeks of rewrite cost avoided; team can ship features instead.
+- All PRD non-functional requirements (bcrypt 12, JWT rotation, OTP MFA, rate limiting, audit log) are equally implementable in FastAPI.
+**Trade-off:** Documented deviation from PRD literal stack. Stakeholder sign-off required at next review.
+
+### ADR-002 — Mobile deferred (V1 web-only)
+**Date:** Feb 2026
+**Decision:** React Native employee + admin mobile apps move to backlog.
+**Rationale:** Get web-only V1 to 500 pilot users first; learn before building mobile.
+
+### ADR-003 — Existing pages preserved
+**Date:** Feb 2026
+**Decision:** NPS/CSAT (`/apps/nps-csat`) and Action Intelligence (`/apps/survey-builder`) pages retained as deep-dives under the Customer pillar in the new pillar-nav model.
 
 ---
 
 ## Architecture
-- **Frontend:** React 19 + TailwindCSS + lucide-react
-- **Backend:** FastAPI (Python 3.11)
-- **Database:** PostgreSQL 15 (local) via SQLAlchemy 2.0
-- **Auth:** JWT (Bearer token stored in localStorage)
+- **Frontend:** React 19 + TailwindCSS + Shadcn UI + lucide-react
+- **Backend:** FastAPI + SQLAlchemy 2.0 (Python 3.11)
+- **Database:** PostgreSQL 15 (local dev) / 16 (production target) via SQLAlchemy
+- **Auth:** JWT access (15 min) + opaque refresh (30 d, one-time-use rotation), bcrypt cost 12
+- **Session store:** `sessions` table (DB-backed; Redis added in Sprint F for rate limiting)
+- **Audit:** `audit_log` table — all auth + admin actions
 - **Design:** Outfit + IBM Plex Sans fonts, #CC0000 primary red
 
 ---
 
-## User Personas
-- **Admin:** Full access, user management, role changes
+## User Personas (PRD §3.3)
+- **Super Admin:** Platform-wide; only super_admin can grant super_admin
+- **Admin:** User approvals, role management, content CMS, notifications, audit log
 - **Manager:** Team management, approvals, full app access
-- **Employee:** Standard app access, dashboard, XP tracking
+- **Employee:** Standard app access, dashboard, XP earning + tracking
 
 ---
 
-## Core Requirements (Static)
-1. JWT auth with email/password
-2. PostgreSQL database
-3. Three roles: Admin, Manager, Employee
-4. HSI branding (Hitachi Systems India, red #CC0000)
-5. Responsive enterprise dashboard
+## Core Requirements
+1. JWT auth with email/password (Sprint A ✅) + email OTP MFA (Sprint B)
+2. PostgreSQL — all data
+3. Four roles: super_admin, admin, manager, employee
+4. Domain lock (`@hitachi-systems.com` only) — enforced at API (Sprint A ✅) + DB CHECK (Sprint A.2)
+5. HSI branding (Hitachi Systems India, red #CC0000)
+6. Responsive enterprise dashboard
 
 ---
 
-## Implemented (Phase 1)
+## Implemented (Phase 1 + Sprint A)
 
-### Auth
-- [x] User registration with role selection
-- [x] User login with JWT token
-- [x] Token stored in localStorage
-- [x] Protected routes
-- [x] Auto-seeded users: admin, manager, employees (6 total)
+### Auth (Sprint A — hardened Feb 2026)
+- [x] User registration with role selection (employee | manager only — admins seeded)
+- [x] **Domain restriction** at API layer (`@hitachi-systems.com` only)
+- [x] **Pending-approval flow** — `is_active=False` until admin approves
+- [x] **bcrypt cost 12**
+- [x] **JWT access (15 min) + refresh (30 d) with one-time-use rotation**
+- [x] **`sessions` table** with device/IP/UA tracking
+- [x] **Account lockout** — 5 failed attempts → 15 min (HTTP 423)
+- [x] **`audit_log` table** — every auth + admin action logged
+- [x] **`super_admin` role**
+- [x] `/auth/check-email`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`
+- [x] `/admin/users/pending`, `/admin/users/:id/approve`, `/admin/users/:id/reject`
+- [x] `/admin/audit-log`
+- [x] `otp_codes` table created (SMTP wiring in Sprint B)
 
-### Home Dashboard (/):
-- [x] Red hero header with greeting + quick stats
-- [x] MY DASHBOARDS section (5 metric cards)
+### User Model Expansion
+- [x] Added: `display_name`, `employee_id`, `practice`, `designation`, `art_tags[]`, `avatar_url`, `phone`, `date_of_birth`, `date_joined`, `is_verified`, `approved_by`, `approved_at`, `last_login_at`, `failed_attempts`, `locked_until`
+
+### Home Dashboard (`/`)
+- [x] Red hero header + quick stats
+- [x] MY DASHBOARDS (5 metric cards)
 - [x] MY APPS QUICK ACCESS (5 buttons)
-- [x] ALL APPLICATIONS grid (9 apps with colorful headers)
-- [x] RECENT ACTIVITY feed with timestamps
-- [x] MY SCORE circular gauge + breakdown
+- [x] ALL APPLICATIONS grid (9 apps)
+- [x] RECENT ACTIVITY feed
+- [x] MY SCORE gauge
 - [x] UPCOMING events
-- [x] PENDING ACTIONS with Act buttons
-- [x] ORGANISATION LEADERBOARD (real DB data)
-- [x] ANNOUNCEMENTS section
+- [x] PENDING ACTIONS
+- [x] LEADERBOARD (live DB)
+- [x] ANNOUNCEMENTS
+- [ ] **Sprint C will replace** with PRD home (EDM carousel + quotes + activity grid + 4 pillar cards)
 
 ### Pages
-- [x] /login — Login page with HSI branding
-- [x] /register — Register with role selection
-- [x] / — Home dashboard
-- [x] /apps/:appId — 9 original app placeholder pages
-- [x] /apps/nps-csat — **Full NPS & CSAT page** (dark theme, charts, gauge)
-- [x] /apps/survey-builder — **Action Intelligence Platform** (Meeting & Task Follow-up) — white nav, marquee ticker, KPI cards, escalation heatmap, meetings panel
-- [x] /apps/email-campaigns — Email Campaigns placeholder
-- [x] /admin — Admin user management panel
+- [x] /login — HSI branding
+- [x] /register — pending-approval flow + domain hint
+- [x] / — current Enterprise Portal home (will be replaced Sprint C)
+- [x] /apps/:appId — 9 placeholder pages
+- [x] /apps/nps-csat — NPS & CSAT (kept; will fold under Customer pillar)
+- [x] /apps/survey-builder — Action Intelligence (kept; will fold under Customer pillar)
+- [x] /admin — User management panel
 
-### Admin Panel
-- [x] User list table
-- [x] Search + filter by role
-- [x] Role change dropdown
-- [x] Delete user (with confirmation)
-- [x] Stats cards (total, admin, manager, employee count)
+---
+
+## Seed Users (post Sprint A)
+
+| Email | Password | Role |
+|-------|----------|------|
+| superadmin@hitachi-systems.com | SuperAdmin@123 | super_admin |
+| admin@hitachi-systems.com | Admin@123 | admin |
+| manager@hitachi-systems.com | Manager@123 | manager |
+| employee@hitachi-systems.com | Employee@123 | employee |
+| priya@hitachi-systems.com | Employee@123 | employee |
+| kiran@hitachi-systems.com | Employee@123 | employee |
+| ananya@hitachi-systems.com | Employee@123 | employee |
+
+All 7 are pre-approved (`is_active=True`). New self-service registrations land in pending queue.
 
 ---
 
 ## Dashboard Data
-- Stats, Activities, Announcements, Pending Actions, Upcoming: **MOCKED** (static from API)
+- Stats, Activities, Announcements, Pending Actions, Upcoming: **MOCKED** (replaced in Sprint C+)
 - Leaderboard: **LIVE** (queries PostgreSQL)
+- Audit log: **LIVE**
+- Pending users: **LIVE**
 
 ---
 
-## Docker Production Deployment (Feb 2026 — Complete)
-- [x] `/app/docker-compose.yml` — 4-service stack: db, backend, frontend, nginx (reverse proxy)
-- [x] `/app/backend/Dockerfile` — multi-stage Python 3.11-slim, non-root user, healthcheck, uvicorn workers
-- [x] `/app/frontend/Dockerfile` — multi-stage Node build → nginx:1.25-alpine serve
-- [x] `/app/frontend/nginx-app.conf` — SPA routing config inside frontend container
-- [x] `/app/docker/nginx/nginx.conf` — top-level reverse proxy: HTTP→HTTPS redirect, TLS 1.2/1.3, HSTS, `/api/*` → backend, `/*` → frontend, rate-limiting, security headers
-- [x] `/app/docker/nginx/ssl/` — placeholder dir with README (user supplies `fullchain.pem` + `privkey.pem`)
-- [x] `/app/.env.example` — template for DB, JWT, admin, CORS, REACT_APP_BACKEND_URL
-- [x] `/app/setup.sh` — one-click `up/down/logs/status/restart` with full preflight: docker daemon check, compose detection (v2 & legacy), .env validation, placeholder-default detection, **hard-fails if SSL certs missing (no self-signed fallback per user spec)**
-- First-run flow: `cp .env.example .env` → fill values → drop certs in `docker/nginx/ssl/` → `./setup.sh`
+## Docker Production Deployment
+- [x] `/app/docker-compose.yml` — db + backend + frontend + nginx
+- [x] `/app/backend/Dockerfile` — multi-stage, non-root, healthcheck
+- [x] `/app/backend/entrypoint.sh` — DB-wait + seed + uvicorn
+- [x] `/app/frontend/Dockerfile` — multi-stage build → nginx serve, tolerates missing yarn.lock
+- [x] `/app/docker/nginx/nginx.conf` — TLS 1.2/1.3, HTTP→HTTPS, rate-limit, security headers
+- [x] `/app/docker/nginx/ssl/` — placeholder dir + README
+- [x] `/app/.env.example` — full env template inc. AWS SES placeholders for Sprint B
+- [x] `/app/setup.sh` — one-click deploy with preflight (hard-fail on missing certs, no self-signed)
+- [x] Custom HTTP/HTTPS host ports via `${HTTP_PORT}` / `${HTTPS_PORT}`
 
 ---
 
-## Seed Users
-| Email | Password | Role |
-|-------|----------|------|
-| admin@hsi.com | Admin@123 | admin |
-| manager@hsi.com | Manager@123 | manager |
-| employee@hsi.com | Employee@123 | employee |
-| priya@hsi.com | Employee@123 | employee |
-| kiran@hsi.com | Employee@123 | employee |
-| ananya@hsi.com | Employee@123 | employee |
+## Prioritized Backlog (post-Sprint A)
+
+### P0 — Sprint B (next)
+- [ ] AWS SES integration → email OTP MFA flow (login + register + reset)
+  - `POST /auth/verify-otp`, `POST /auth/forgot-password`, `POST /auth/reset-password`
+- [ ] Add Redis service to docker-compose for rate limiting (5 OTP/hour/email, 10 login/min/IP)
+- [ ] DB-level domain CHECK constraint
+- [ ] Postgres image bump 15 → 16
+
+### P1 — Sprint C (Pillars + EDM + CMS)
+- [ ] `pillars`, `pillar_icons`, `edm_slides`, `motivational_quotes` tables + admin CRUD
+- [ ] Replace home `/` with PRD home: EDM carousel + quotes + activity grid + 4 pillar cards
+- [ ] 4 pillar pages (Customer / Innovator / Employee / Shareholder) — hero + sub-EDM + 6-col icon grid
+- [ ] Fold NPS/CSAT + Action Intelligence under Customer pillar
+- [ ] WebSocket "Publish All" live-sync (≤5s)
+
+### P1 — Sprint D (XP & Incentive Engine)
+- [ ] `best_practices`, `replications`, `xp_ledger`, `incentive_calculations`, `tech_days`, `certifications`
+- [ ] XP balance trigger + ART multipliers + INR rate config
+- [ ] Quarterly payout state machine
+- [ ] XP Detail + Incentive Statement modal panels
+
+### P2 — Sprint E (Notifications + Auto-triggers)
+- [ ] `notifications` + `user_notifications` tables
+- [ ] Admin notification composer
+- [ ] 7 auto-triggers + birthday `pg_cron` (50 XP)
+
+### P2 — Sprint F (Hardening + Ops)
+- [ ] pgBouncer + Redis production hardening
+- [ ] Sentry + WAL backups
+- [ ] TLS 1.3 only
+- [ ] WCAG 2.1 AA audit
+- [ ] 4 DB roles (`hsi_api`/`hsi_admin`/`hsi_readonly`/`hsi_migrate`) with SCRAM-SHA-256
+
+### Deferred (Future)
+- React Native mobile apps (employee + admin)
+- MinIO file storage (when first feature needs it)
+- Push notifications
 
 ---
 
-## Prioritized Backlog
+## Out-of-Scope (V1)
+- Mobile apps (RN) — deferred per ADR-002
+- Node.js stack — superseded by ADR-001
+- MinIO — deferred until needed
 
-### P0 (Next — awaiting screenshots)
-- [ ] Best Practices Repository full page
-- [ ] Tech Days Manager full page
-- [ ] CRM & Opportunity Pipeline full page
-- [ ] Productivity Hub full page
-- [ ] Workflow Automation page
-- [ ] Access Rights Management page
-- [ ] Visitor Management page
-- [ ] Learning & Development page
-- [ ] Analytics & Reports page (VOC Intelligence Platform shown in screenshot)
-
-### P1 (After P0)
-- [ ] Connect dashboard stats to real DB data
-- [ ] Real activities feed from DB
-- [ ] Notifications system
-- [ ] User profile page
-- [ ] Search functionality
-
-### P2
-- [ ] Export reports
-- [ ] Email notifications
-- [ ] Advanced analytics
-- [ ] Mobile app

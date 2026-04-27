@@ -49,7 +49,7 @@ export default function LoginPage() {
           </p>
         </div>
         <div className="relative z-10 grid grid-cols-2 gap-4">
-          {[["80+", "Best Practices"], ["2,840+", "XP Points"], ["9", "Apps"], ["3 Roles", "Admin/Manager/Employee"]].map(([v, l]) => (
+          {[["80+", "Best Practices"], ["2,840+", "XP Points"], ["9", "Apps"], ["4 Roles", "SuperAdmin/Admin/Manager/Employee"]].map(([v, l]) => (
             <div key={l} className="bg-white/15 rounded-lg p-4 backdrop-blur-sm">
               <div className="text-white font-bold text-2xl">{v}</div>
               <div className="text-white/70 text-xs mt-0.5">{l}</div>
@@ -87,7 +87,7 @@ export default function LoginPage() {
                 <input
                   data-testid="login-email-input"
                   type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@hsi.com" required
+                  placeholder="you@hitachi-systems.com" required
                   className="w-full px-4 py-2.5 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#CC0000]/30 focus:border-[#CC0000] bg-white transition-all"
                 />
               </div>
@@ -131,7 +131,7 @@ export default function LoginPage() {
             <div className="mt-4 bg-[#F8FAFC] rounded-lg p-3 border border-[#E2E8F0]">
               <p className="text-xs text-[#64748B] font-medium mb-1.5">Demo credentials:</p>
               <div className="space-y-1">
-                {[["admin@hsi.com", "Admin@123", "Admin"], ["employee@hsi.com", "Employee@123", "Employee"], ["manager@hsi.com", "Manager@123", "Manager"]].map(([e, p, r]) => (
+                {[["admin@hitachi-systems.com", "Admin@123", "Admin"], ["employee@hitachi-systems.com", "Employee@123", "Employee"], ["manager@hitachi-systems.com", "Manager@123", "Manager"]].map(([e, p, r]) => (
                   <button key={r} onClick={() => { setEmail(e); setPassword(p); }}
                     className="w-full text-left text-xs text-[#475569] hover:text-[#CC0000] py-0.5 transition-colors">
                     <span className="font-medium">{r}:</span> {e} / {p}

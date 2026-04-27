@@ -29,6 +29,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data } = await axios.post(`${API}/auth/login`, { email, password });
       localStorage.setItem("hsi_token", data.access_token);
+      if (data.refresh_token) localStorage.setItem("hsi_refresh", data.refresh_token);
       setUser(data.user);
       return data;
     } catch (e) {
@@ -39,16 +40,26 @@ export const AuthProvider = ({ children }) => {
   const register = async (payload) => {
     try {
       const { data } = await axios.post(`${API}/auth/register`, payload);
-      localStorage.setItem("hsi_token", data.access_token);
-      setUser(data.user);
+      // New flow: registration is pending admin approval — no token issued.
+      if (data?.access_token) {
+        localStorage.setItem("hsi_token", data.access_token);
+        if (data.refresh_token) localStorage.setItem("hsi_refresh", data.refresh_token);
+        setUser(data.user);
+      }
       return data;
     } catch (e) {
       throw new Error(formatErr(e.response?.data?.detail) || e.message);
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const t = localStorage.getItem("hsi_token");
+    if (t) {
+      try { await axios.post(`${API}/auth/logout`, {}, { headers: { Authorization: `Bearer ${t}` } }); }
+      catch { /* ignore — tokens are cleared regardless */ }
+    }
     localStorage.removeItem("hsi_token");
+    localStorage.removeItem("hsi_refresh");
     setUser(null);
   };
 

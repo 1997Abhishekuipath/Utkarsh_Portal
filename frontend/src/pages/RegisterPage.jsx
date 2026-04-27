@@ -6,13 +6,13 @@ import { Eye, EyeOff, Building2, UserPlus } from "lucide-react";
 const ROLES = [
   { value: "employee", label: "Employee", desc: "Standard access to all apps and features" },
   { value: "manager",  label: "Manager",  desc: "Team management and approval capabilities" },
-  { value: "admin",    label: "Admin",    desc: "Full system access and user management" },
 ];
 
 export default function RegisterPage() {
   const [form, setForm]       = useState({ name: "", email: "", password: "", role: "employee", department: "" });
   const [showPw, setShowPw]   = useState(false);
   const [error, setError]     = useState("");
+  const [pendingMsg, setPendingMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -21,10 +21,14 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(""); setLoading(true);
+    setError(""); setPendingMsg(""); setLoading(true);
     try {
-      await register(form);
-      navigate("/");
+      const data = await register(form);
+      if (data?.pending_approval) {
+        setPendingMsg(data.message || "Registration submitted. An admin will review your account shortly.");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -57,6 +61,17 @@ export default function RegisterPage() {
             </div>
           )}
 
+          {pendingMsg && (
+            <div data-testid="register-pending" className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-4 text-sm mb-5">
+              <div className="font-semibold mb-1">Registration submitted</div>
+              <div className="text-emerald-700">{pendingMsg}</div>
+              <Link to="/login" className="inline-block mt-3 text-[#CC0000] font-medium hover:underline">
+                Return to login →
+              </Link>
+            </div>
+          )}
+
+          {!pendingMsg && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
@@ -68,8 +83,9 @@ export default function RegisterPage() {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-[#0F172A] mb-1.5">Email Address</label>
                 <input data-testid="register-email-input" type="email" value={form.email} onChange={set("email")}
-                  placeholder="you@hsi.com" required
+                  placeholder="you@hitachi-systems.com" required
                   className="w-full px-4 py-2.5 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#CC0000]/30 focus:border-[#CC0000] bg-white" />
+                <p className="text-[11px] text-[#64748B] mt-1">Only @hitachi-systems.com emails accepted. Account requires admin approval before first login.</p>
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-[#0F172A] mb-1.5">Password</label>
@@ -93,7 +109,7 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-[#0F172A] mb-2">Role</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {ROLES.map(r => (
                   <button key={r.value} type="button" data-testid={`role-${r.value}`}
                     onClick={() => setForm(f => ({ ...f, role: r.value }))}
@@ -110,6 +126,7 @@ export default function RegisterPage() {
               {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><UserPlus size={16} /><span>Create Account</span></>}
             </button>
           </form>
+          )}
 
           <p className="text-center text-sm text-[#475569] mt-5 pt-5 border-t border-[#E2E8F0]">
             Already have an account?{" "}

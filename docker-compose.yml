@@ -32,10 +32,22 @@ services:
     container_name: hsi_backend
     environment:
       DATABASE_URL: "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@db:5432/${DB_NAME:-hsi_portal}"
-      JWT_SECRET:     ${JWT_SECRET:-change-me-to-a-random-32-char-string}
-      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@hsi.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
-      CORS_ORIGINS:   ${CORS_ORIGINS:-*}
+      JWT_SECRET:         ${JWT_SECRET:-change-me-to-a-random-32-char-string}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-to-a-different-secret}
+      ADMIN_EMAIL:        ${ADMIN_EMAIL:-admin@hitachi-systems.com}
+      ADMIN_PASSWORD:     ${ADMIN_PASSWORD:-Admin@123}
+      ALLOWED_DOMAIN:     ${ALLOWED_DOMAIN:-hitachi-systems.com}
+      BCRYPT_ROUNDS:      ${BCRYPT_ROUNDS:-12}
+      ACCESS_TTL_MIN:     ${ACCESS_TTL_MIN:-15}
+      REFRESH_TTL_DAY:    ${REFRESH_TTL_DAY:-30}
+      LOCKOUT_FAILS:      ${LOCKOUT_FAILS:-5}
+      LOCKOUT_MIN:        ${LOCKOUT_MIN:-15}
+      CORS_ORIGINS:       ${CORS_ORIGINS:-*}
+      AWS_REGION:         ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID:  ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      SES_SENDER_EMAIL:   ${SES_SENDER_EMAIL:-noreply@hitachi-systems.com}
+      SES_SENDER_NAME:    ${SES_SENDER_NAME:-Hitachi Systems}
       SKIP_SEED_ON_IMPORT: "1"   # seeding happens in entrypoint.sh → seed.py
     depends_on:
       db:

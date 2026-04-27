@@ -1,73 +1,206 @@
+"""
+HSI Enterprise Portal — Backend API
+Stack: FastAPI + SQLAlchemy 2.0 + PostgreSQL + JWT (access + refresh rotation)
+
+Sprint A — Auth foundation hardened:
+- bcrypt cost 12
+- Domain-locked registration (ALLOWED_DOMAIN env)
+- 4 roles: employee | manager | admin | super_admin
+- Pending admin approval before is_active=True
+- Account lockout: 5 failed attempts → 15 min
+- Sessions table with refresh-token rotation (15min access / 30d refresh)
+- Audit log for all auth + admin actions
+- otp_codes table (Sprint B will wire SMTP delivery)
+"""
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, DateTime, Integer, Boolean
+from sqlalchemy import (
+    create_engine, Column, String, DateTime, Date, Integer, BigInteger,
+    Boolean, ForeignKey, CheckConstraint, Index, text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
-import os, logging, uuid, bcrypt, jwt
+import os, logging, uuid, bcrypt, jwt, hashlib, secrets
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent
 
-# ── PostgreSQL ────────────────────────────────────────────────────────────────
-DATABASE_URL = os.environ.get(
-    'DATABASE_URL',
-    'postgresql://hsi_user:hsi_password123@localhost:5432/hsi_portal'
-)
+# ── Config ────────────────────────────────────────────────────────────────────
+DATABASE_URL    = os.environ.get('DATABASE_URL',
+                                 'postgresql://hsi_user:hsi_password123@localhost:5432/hsi_portal')
+JWT_SECRET      = os.environ.get('JWT_SECRET', 'hsi-change-me-in-production')
+JWT_REFRESH_SECRET = os.environ.get('JWT_REFRESH_SECRET', JWT_SECRET + '-refresh')
+JWT_ALGO        = 'HS256'
+ALLOWED_DOMAIN  = os.environ.get('ALLOWED_DOMAIN', 'hitachi-systems.com').lower().lstrip('@')
+BCRYPT_ROUNDS   = int(os.environ.get('BCRYPT_ROUNDS', '12'))
+ACCESS_TTL_MIN  = int(os.environ.get('ACCESS_TTL_MIN', '15'))
+REFRESH_TTL_DAY = int(os.environ.get('REFRESH_TTL_DAY', '30'))
+LOCKOUT_FAILS   = int(os.environ.get('LOCKOUT_FAILS', '5'))
+LOCKOUT_MIN     = int(os.environ.get('LOCKOUT_MIN', '15'))
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 class Base(DeclarativeBase):
     pass
 
-# ── JWT ───────────────────────────────────────────────────────────────────────
-JWT_SECRET = os.environ.get('JWT_SECRET', 'hsi-change-me-in-production')
-JWT_ALGO   = 'HS256'
 
 # ── DB Models ─────────────────────────────────────────────────────────────────
 class UserDB(Base):
     __tablename__ = 'users'
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name            = Column(String, nullable=False)              # PRD: full_name
+    display_name    = Column(String, nullable=True)
+    employee_id     = Column(String, unique=True, nullable=True)
+    email           = Column(String, unique=True, index=True, nullable=False)
+    password_hash   = Column(String, nullable=False)
+    role            = Column(String, default='employee', nullable=False)
+    department      = Column(String, nullable=True)
+    practice        = Column(String, nullable=True)
+    designation     = Column(String, nullable=True)
+    art_tags        = Column(ARRAY(String), nullable=True, default=list)
+    avatar_url      = Column(String, nullable=True)
+    phone           = Column(String, nullable=True)
+    date_of_birth   = Column(Date, nullable=True)
+    date_joined     = Column(Date, default=lambda: datetime.now(timezone.utc).date())
+    xp_points       = Column(Integer, default=0)                  # legacy total; will move to xp_ledger
+    is_active       = Column(Boolean, default=False)              # requires admin approval
+    is_verified     = Column(Boolean, default=False)              # email verified via OTP (Sprint B)
+    approved_by     = Column(String, ForeignKey('users.id'), nullable=True)
+    approved_at     = Column(DateTime(timezone=True), nullable=True)
+    last_login_at   = Column(DateTime(timezone=True), nullable=True)
+    failed_attempts = Column(Integer, default=0)
+    locked_until    = Column(DateTime(timezone=True), nullable=True)
+    created_at      = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime(timezone=True),
+                             default=lambda: datetime.now(timezone.utc),
+                             onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint("role IN ('employee','manager','admin','super_admin')", name='chk_user_role'),
+    )
+
+
+class SessionDB(Base):
+    """Refresh-token store with device/IP tracking. Access tokens reference sess id."""
+    __tablename__ = 'sessions'
     id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name          = Column(String, nullable=False)
-    email         = Column(String, unique=True, index=True, nullable=False)
-    password_hash = Column(String, nullable=False)
-    role          = Column(String, default='employee')  # admin|manager|employee
-    department    = Column(String, nullable=True)
-    xp_points     = Column(Integer, default=0)
+    user_id       = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    refresh_hash  = Column(String, unique=True, nullable=False, index=True)  # SHA-256 of refresh token
+    device_type   = Column(String, nullable=True)   # mobile|web|admin
+    ip_address    = Column(String, nullable=True)
+    user_agent    = Column(String, nullable=True)
     is_active     = Column(Boolean, default=True)
+    expires_at    = Column(DateTime(timezone=True), nullable=False)
+    last_used_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    revoked_at    = Column(DateTime(timezone=True), nullable=True)
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+
+class OtpCodeDB(Base):
+    """Email OTP store. SMTP delivery wired in Sprint B (AWS SES)."""
+    __tablename__ = 'otp_codes'
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id     = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    email       = Column(String, nullable=False, index=True)
+    code_hash   = Column(String, nullable=False)                  # SHA-256 of 6-digit code
+    purpose     = Column(String, nullable=False)                  # login|register|reset_password|admin_action
+    attempts    = Column(Integer, default=0)
+    is_used     = Column(Boolean, default=False)
+    expires_at  = Column(DateTime(timezone=True), nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('login','register','reset_password','admin_action')",
+            name='chk_otp_purpose'),
+    )
+
+
+class AuditLogDB(Base):
+    """Append-only audit trail. PRD §4.4 — all auth events + admin actions."""
+    __tablename__ = 'audit_log'
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id       = Column(String, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    actor_email   = Column(String, nullable=True)
+    action        = Column(String, nullable=False, index=True)
+    target_type   = Column(String, nullable=True)
+    target_id     = Column(String, nullable=True)
+    ip_address    = Column(String, nullable=True)
+    user_agent    = Column(String, nullable=True)
+    details       = Column(JSONB, nullable=True)
+    status        = Column(String, nullable=True)                 # success|failure
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+
 Base.metadata.create_all(bind=engine)
+
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 class RegisterReq(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: str = 'employee'
+    role: Optional[str] = 'employee'
     department: Optional[str] = None
+    employee_id: Optional[str] = None
+    designation: Optional[str] = None
+
 
 class LoginReq(BaseModel):
     email: EmailStr
     password: str
 
+
+class RefreshReq(BaseModel):
+    refresh_token: str
+
+
+class CheckEmailReq(BaseModel):
+    email: EmailStr
+
+
+class ApproveUserReq(BaseModel):
+    role: Optional[str] = None        # optional override on approval
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def hash_pw(pw: str) -> str:
-    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
+
 
 def verify_pw(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
-def make_token(user_id: str, email: str, role: str) -> str:
+
+def sha256_hex(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def validate_domain(email: str) -> None:
+    if ALLOWED_DOMAIN and not email.lower().endswith(f"@{ALLOWED_DOMAIN}"):
+        raise HTTPException(400, f"Email must end with @{ALLOWED_DOMAIN}")
+
+
+def make_access_token(user_id: str, email: str, role: str, sess_id: str) -> str:
     return jwt.encode(
-        {'sub': user_id, 'email': email, 'role': role,
-         'exp': datetime.now(timezone.utc) + timedelta(hours=24), 'type': 'access'},
-        JWT_SECRET, algorithm=JWT_ALGO
+        {'sub': user_id, 'email': email, 'role': role, 'sess': sess_id,
+         'exp': datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TTL_MIN),
+         'iat': datetime.now(timezone.utc), 'iss': 'hsi-platform', 'type': 'access'},
+        JWT_SECRET, algorithm=JWT_ALGO,
     )
+
+
+def make_refresh_token() -> str:
+    return secrets.token_urlsafe(48)   # opaque token; we hash + store in sessions
+
 
 def get_db():
     db = SessionLocal()
@@ -76,6 +209,26 @@ def get_db():
     finally:
         db.close()
 
+
+def client_meta(request: Request) -> dict:
+    fwd = request.headers.get('x-forwarded-for', '')
+    ip = fwd.split(',')[0].strip() if fwd else (request.client.host if request.client else None)
+    return {'ip': ip, 'ua': request.headers.get('user-agent', '')[:300]}
+
+
+def audit(db: Session, *, user_id: Optional[str], actor_email: Optional[str],
+          action: str, status: str, request: Request,
+          target_type: Optional[str] = None, target_id: Optional[str] = None,
+          details: Optional[dict] = None):
+    meta = client_meta(request)
+    db.add(AuditLogDB(
+        user_id=user_id, actor_email=actor_email, action=action, status=status,
+        target_type=target_type, target_id=target_id,
+        ip_address=meta['ip'], user_agent=meta['ua'], details=details or {},
+    ))
+    db.commit()
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserDB:
     token = request.cookies.get('access_token')
     if not token:
@@ -83,86 +236,220 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserDB:
         if hdr.startswith('Bearer '):
             token = hdr[7:]
     if not token:
-        raise HTTPException(status_code=401, detail='Not authenticated')
+        raise HTTPException(401, 'Not authenticated')
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
         if payload.get('type') != 'access':
-            raise HTTPException(status_code=401, detail='Invalid token type')
+            raise HTTPException(401, 'Invalid token type')
+        # Verify session is still active
+        sess_id = payload.get('sess')
+        if sess_id:
+            sess = db.query(SessionDB).filter(SessionDB.id == sess_id).first()
+            if not sess or not sess.is_active:
+                raise HTTPException(401, 'Session revoked')
         user = db.query(UserDB).filter(UserDB.id == payload['sub']).first()
-        if not user:
-            raise HTTPException(status_code=401, detail='User not found')
+        if not user or not user.is_active:
+            raise HTTPException(401, 'User not found or inactive')
         return user
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail='Token expired')
+        raise HTTPException(401, 'Token expired')
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail='Invalid token')
+        raise HTTPException(401, 'Invalid token')
+
+
+def require_role(*allowed):
+    def _dep(u: UserDB = Depends(get_current_user)) -> UserDB:
+        if u.role not in allowed:
+            raise HTTPException(403, f"Requires role: {', '.join(allowed)}")
+        return u
+    return _dep
+
 
 def user_to_dict(u: UserDB) -> dict:
-    return {'id': u.id, 'name': u.name, 'email': u.email, 'role': u.role,
-            'department': u.department, 'xp_points': u.xp_points}
+    return {
+        'id': u.id, 'name': u.name, 'display_name': u.display_name,
+        'email': u.email, 'role': u.role, 'department': u.department,
+        'practice': u.practice, 'designation': u.designation,
+        'employee_id': u.employee_id, 'avatar_url': u.avatar_url,
+        'art_tags': list(u.art_tags or []), 'xp_points': u.xp_points,
+        'is_active': u.is_active, 'is_verified': u.is_verified,
+        'last_login_at': u.last_login_at.isoformat() if u.last_login_at else None,
+    }
 
-# ── Seed ──────────────────────────────────────────────────────────────────────
-def seed_users():
-    db = SessionLocal()
-    seeds = [
-        ('Admin User',  os.environ.get('ADMIN_EMAIL', 'admin@hsi.com'),
-         os.environ.get('ADMIN_PASSWORD', 'Admin@123'), 'admin', None, 5000),
-        ('Arjun Mehta', 'employee@hsi.com', 'Employee@123', 'employee', 'Engineering', 2840),
-        ('Rohan Kumar',  'manager@hsi.com',  'Manager@123',  'manager',  'Sales', 4625),
-        ('Priya Krishnan', 'priya@hsi.com', 'Employee@123', 'employee', 'Design', 4318),
-        ('Kiran Shah',   'kiran@hsi.com',   'Employee@123', 'employee', 'Engineering', 3986),
-        ('Ananya Singh', 'ananya@hsi.com',  'Employee@123', 'employee', 'Marketing', 2786),
-    ]
-    for name, email, pw, role, dept, xp in seeds:
-        if not db.query(UserDB).filter(UserDB.email == email).first():
-            db.add(UserDB(id=str(uuid.uuid4()), name=name, email=email,
-                          password_hash=hash_pw(pw), role=role, department=dept, xp_points=xp))
-    db.commit()
-    db.close()
-
-# In Docker production, seeding runs via entrypoint.sh → seed.py (before uvicorn).
-# For local dev / supervisor-managed runs, seed on import as well (idempotent).
-if os.environ.get('SKIP_SEED_ON_IMPORT') != '1':
-    try:
-        seed_users()
-    except Exception as e:
-        logging.warning(f"Seed-on-import failed (safe to ignore in Docker): {e}")
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
-app    = FastAPI(title='HSI Enterprise Portal')
+app    = FastAPI(title='HSI Enterprise Portal API', version='1.0.0')
 router = APIRouter(prefix='/api')
 
+
 # ── Auth endpoints ────────────────────────────────────────────────────────────
+@router.post('/auth/check-email')
+def check_email(data: CheckEmailReq, db: Session = Depends(get_db)):
+    """Pre-flight check: domain valid + does user exist + is_active."""
+    email = data.email.lower()
+    try:
+        validate_domain(email)
+    except HTTPException:
+        return {'domain_ok': False, 'exists': False, 'is_active': False}
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+    return {'domain_ok': True, 'exists': u is not None,
+            'is_active': bool(u and u.is_active)}
+
+
 @router.post('/auth/register')
-def register(data: RegisterReq, db: Session = Depends(get_db)):
-    if db.query(UserDB).filter(UserDB.email == data.email.lower()).first():
+def register(data: RegisterReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    if data.role not in ('employee', 'manager'):
+        # Public registration only allows employee or manager. Admins are seeded.
+        raise HTTPException(400, 'Role must be employee or manager')
+    if db.query(UserDB).filter(UserDB.email == email).first():
         raise HTTPException(400, 'Email already registered')
-    if data.role not in ('admin', 'manager', 'employee'):
-        raise HTTPException(400, 'Invalid role. Must be admin, manager, or employee')
-    u = UserDB(id=str(uuid.uuid4()), name=data.name, email=data.email.lower(),
-               password_hash=hash_pw(data.password), role=data.role,
-               department=data.department, xp_points=0)
+
+    u = UserDB(
+        id=str(uuid.uuid4()), name=data.name, email=email,
+        password_hash=hash_pw(data.password), role=data.role,
+        department=data.department, employee_id=data.employee_id,
+        designation=data.designation,
+        is_active=False, is_verified=False,                       # awaiting admin approval
+    )
     db.add(u); db.commit(); db.refresh(u)
-    return {'access_token': make_token(u.id, u.email, u.role),
-            'token_type': 'bearer', 'user': user_to_dict(u)}
+    audit(db, user_id=u.id, actor_email=u.email, action='register',
+          status='success', request=request)
+    return {
+        'message': 'Registration submitted. Your account is pending admin approval.',
+        'user': user_to_dict(u),
+        'pending_approval': True,
+    }
+
+
+def _create_session(db: Session, user: UserDB, request: Request) -> tuple[str, str]:
+    """Create a session row + return (access_token, refresh_token_plain)."""
+    refresh = make_refresh_token()
+    refresh_h = sha256_hex(refresh)
+    meta = client_meta(request)
+    sess = SessionDB(
+        id=str(uuid.uuid4()), user_id=user.id, refresh_hash=refresh_h,
+        device_type='web', ip_address=meta['ip'], user_agent=meta['ua'],
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TTL_DAY),
+    )
+    db.add(sess); db.commit(); db.refresh(sess)
+    access = make_access_token(user.id, user.email, user.role, sess.id)
+    return access, refresh
+
 
 @router.post('/auth/login')
-def login(data: LoginReq, db: Session = Depends(get_db)):
-    u = db.query(UserDB).filter(UserDB.email == data.email.lower()).first()
+def login(data: LoginReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+
+    # Lockout check (PRD §4.4)
+    now = datetime.now(timezone.utc)
+    if u and u.locked_until and u.locked_until > now:
+        audit(db, user_id=u.id, actor_email=email, action='login_locked',
+              status='failure', request=request,
+              details={'locked_until': u.locked_until.isoformat()})
+        raise HTTPException(423, f'Account locked until {u.locked_until.isoformat()}')
+
     if not u or not verify_pw(data.password, u.password_hash):
+        if u:
+            u.failed_attempts = (u.failed_attempts or 0) + 1
+            if u.failed_attempts >= LOCKOUT_FAILS:
+                u.locked_until = now + timedelta(minutes=LOCKOUT_MIN)
+            db.commit()
+        audit(db, user_id=u.id if u else None, actor_email=email,
+              action='login_failed', status='failure', request=request)
         raise HTTPException(401, 'Invalid email or password')
-    return {'access_token': make_token(u.id, u.email, u.role),
-            'token_type': 'bearer', 'user': user_to_dict(u)}
+
+    if not u.is_active:
+        audit(db, user_id=u.id, actor_email=email, action='login_inactive',
+              status='failure', request=request)
+        raise HTTPException(403, 'Account pending admin approval')
+
+    # Success: reset lockout, update last_login, create session
+    u.failed_attempts = 0
+    u.locked_until = None
+    u.last_login_at = now
+    db.commit()
+    access, refresh = _create_session(db, u, request)
+    audit(db, user_id=u.id, actor_email=email, action='login_success',
+          status='success', request=request)
+    return {
+        'access_token': access, 'refresh_token': refresh,
+        'token_type': 'bearer', 'user': user_to_dict(u),
+    }
+
+
+@router.post('/auth/refresh')
+def refresh_token(data: RefreshReq, request: Request, db: Session = Depends(get_db)):
+    refresh_h = sha256_hex(data.refresh_token)
+    sess = db.query(SessionDB).filter(
+        SessionDB.refresh_hash == refresh_h,
+        SessionDB.is_active == True,                             # noqa: E712
+    ).first()
+    if not sess or sess.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(401, 'Invalid or expired refresh token')
+    u = db.query(UserDB).filter(UserDB.id == sess.user_id).first()
+    if not u or not u.is_active:
+        sess.is_active = False; sess.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(401, 'User no longer active')
+
+    # Rotate refresh token (one-time-use)
+    new_refresh = make_refresh_token()
+    sess.refresh_hash = sha256_hex(new_refresh)
+    sess.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+    access = make_access_token(u.id, u.email, u.role, sess.id)
+    audit(db, user_id=u.id, actor_email=u.email, action='token_refresh',
+          status='success', request=request)
+    return {'access_token': access, 'refresh_token': new_refresh, 'token_type': 'bearer'}
+
 
 @router.post('/auth/logout')
-def logout(_u: UserDB = Depends(get_current_user)):
+def logout(request: Request, u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Revoke current session (extracted from access token)
+    token = request.cookies.get('access_token')
+    if not token:
+        hdr = request.headers.get('Authorization', '')
+        if hdr.startswith('Bearer '):
+            token = hdr[7:]
+    if token:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+            sess_id = payload.get('sess')
+            if sess_id:
+                sess = db.query(SessionDB).filter(SessionDB.id == sess_id).first()
+                if sess:
+                    sess.is_active = False
+                    sess.revoked_at = datetime.now(timezone.utc)
+                    db.commit()
+        except jwt.PyJWTError:
+            pass
+    audit(db, user_id=u.id, actor_email=u.email, action='logout',
+          status='success', request=request)
     return {'message': 'Logged out successfully'}
+
+
+@router.post('/auth/logout-all')
+def logout_all(request: Request, u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    sessions = db.query(SessionDB).filter(SessionDB.user_id == u.id, SessionDB.is_active == True).all()  # noqa: E712
+    for s in sessions:
+        s.is_active = False
+        s.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='logout_all',
+          status='success', request=request, details={'sessions_revoked': len(sessions)})
+    return {'message': 'All sessions revoked', 'count': len(sessions)}
+
 
 @router.get('/auth/me')
 def me(u: UserDB = Depends(get_current_user)):
     return user_to_dict(u)
 
-# ── Dashboard endpoints (static mock data) ────────────────────────────────────
+
+# ── Dashboard endpoints (mock data — Sprint C onwards will replace) ──────────
 @router.get('/dashboard/stats')
 def stats(u: UserDB = Depends(get_current_user)):
     return {
@@ -172,6 +459,7 @@ def stats(u: UserDB = Depends(get_current_user)):
         'tech_days':      {'count': 8,    'trend': 'New',  'label': 'TECH DAYS',        'sub': '10 days'},
         'pending_actions':{'count': 3,    'trend': 'Due',  'label': 'PENDING ACTIONS',  'sub': 'Action needed'}
     }
+
 
 @router.get('/dashboard/activities')
 def activities(_u: UserDB = Depends(get_current_user)):
@@ -184,13 +472,15 @@ def activities(_u: UserDB = Depends(get_current_user)):
         {'id':'6','user':'Access review','action':'completed for 500 users — 96 accounts verified, 2 flagged for review.','category':'Access Rights','time':'Yesterday','type':'review','color':'gray'}
     ]
 
+
 @router.get('/dashboard/leaderboard')
 def leaderboard(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
-    users = db.query(UserDB).order_by(UserDB.xp_points.desc()).limit(10).all()
-    return [{'rank': i+1, 'name': usr.name, 'role': usr.role.capitalize(),
+    users = db.query(UserDB).filter(UserDB.is_active == True).order_by(UserDB.xp_points.desc()).limit(10).all()  # noqa: E712
+    return [{'rank': i+1, 'name': usr.name, 'role': usr.role.replace('_', ' ').capitalize(),
              'xp': usr.xp_points, 'is_current_user': usr.id == u.id,
              'initials': ''.join(p[0].upper() for p in usr.name.split()[:2])}
             for i, usr in enumerate(users)]
+
 
 @router.get('/dashboard/announcements')
 def announcements(_u: UserDB = Depends(get_current_user)):
@@ -201,6 +491,7 @@ def announcements(_u: UserDB = Depends(get_current_user)):
         {'id':'4','title':'Visitor Management Go-Live','body':'Visitor Management module is now live. Please update all visitor registrations.','date':'Apr 9','color':'teal'}
     ]
 
+
 @router.get('/dashboard/pending-actions')
 def pending(_u: UserDB = Depends(get_current_user)):
     return [
@@ -208,6 +499,7 @@ def pending(_u: UserDB = Depends(get_current_user)):
         {'id':'2','title':'Confirm Trip/Rider/Visitor - Apr 30','category':'Visitors','priority':'medium'},
         {'id':'3','title':'Submit Tech Day attendance proof','category':'Tech Days','priority':'high'}
     ]
+
 
 @router.get('/dashboard/upcoming')
 def upcoming(_u: UserDB = Depends(get_current_user)):
@@ -217,6 +509,7 @@ def upcoming(_u: UserDB = Depends(get_current_user)):
         {'id':'3','title':'365 Incentive Payout','description':'Finance Dept','date':'May 1','color':'green'}
     ]
 
+
 @router.get('/dashboard/score')
 def score(u: UserDB = Depends(get_current_user)):
     return {
@@ -225,60 +518,141 @@ def score(u: UserDB = Depends(get_current_user)):
         'breakdown': [
             {'label': 'Practices',    'value': 7, 'bar': 70},
             {'label': 'Publications', 'value': 4, 'bar': 40},
-            {'label': 'Tech Days',    'value': 8, 'bar': 80}
-        ]
+            {'label': 'Tech Days',    'value': 8, 'bar': 80},
+        ],
     }
 
+
 # ── Admin endpoints ───────────────────────────────────────────────────────────
+@router.get('/admin/users/pending')
+def pending_users(u: UserDB = Depends(require_role('admin', 'super_admin')), db: Session = Depends(get_db)):
+    rows = db.query(UserDB).filter(UserDB.is_active == False).order_by(UserDB.created_at.desc()).all()  # noqa: E712
+    return [{'id': r.id, 'name': r.name, 'email': r.email, 'role': r.role,
+             'department': r.department, 'employee_id': r.employee_id,
+             'designation': r.designation,
+             'created_at': r.created_at.isoformat() if r.created_at else None}
+            for r in rows]
+
+
+@router.post('/admin/users/{user_id}/approve')
+def approve_user(user_id: str, body: ApproveUserReq, request: Request,
+                 admin: UserDB = Depends(require_role('admin', 'super_admin')),
+                 db: Session = Depends(get_db)):
+    target = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not target:
+        raise HTTPException(404, 'User not found')
+    if body.role:
+        if body.role not in ('employee', 'manager', 'admin', 'super_admin'):
+            raise HTTPException(400, 'Invalid role')
+        # Only super_admin may grant super_admin
+        if body.role == 'super_admin' and admin.role != 'super_admin':
+            raise HTTPException(403, 'Only super_admin can grant super_admin')
+        target.role = body.role
+    target.is_active = True
+    target.is_verified = True
+    target.approved_by = admin.id
+    target.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    audit(db, user_id=admin.id, actor_email=admin.email, action='approve_user',
+          status='success', request=request, target_type='user', target_id=user_id,
+          details={'new_role': target.role})
+    return {'message': 'User approved', 'role': target.role}
+
+
+@router.post('/admin/users/{user_id}/reject')
+def reject_user(user_id: str, request: Request,
+                admin: UserDB = Depends(require_role('admin', 'super_admin')),
+                db: Session = Depends(get_db)):
+    target = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not target:
+        raise HTTPException(404, 'User not found')
+    if target.is_active:
+        raise HTTPException(400, 'User is already active; use delete instead')
+    db.delete(target); db.commit()
+    audit(db, user_id=admin.id, actor_email=admin.email, action='reject_user',
+          status='success', request=request, target_type='user', target_id=user_id)
+    return {'message': 'User rejected and deleted'}
+
+
 @router.get('/admin/users')
-def get_users(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
-    if u.role != 'admin':
-        raise HTTPException(403, 'Admin access required')
+def get_users(u: UserDB = Depends(require_role('admin', 'super_admin')),
+              db: Session = Depends(get_db)):
     return [{'id': usr.id, 'name': usr.name, 'email': usr.email, 'role': usr.role,
              'xp_points': usr.xp_points, 'department': usr.department,
              'created_at': usr.created_at.isoformat() if usr.created_at else None,
-             'is_active': usr.is_active}
+             'is_active': usr.is_active, 'is_verified': usr.is_verified}
             for usr in db.query(UserDB).order_by(UserDB.created_at.desc()).all()]
 
+
 @router.delete('/admin/users/{user_id}')
-def delete_user(user_id: str, u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
-    if u.role != 'admin':
-        raise HTTPException(403, 'Admin access required')
+def delete_user(user_id: str, request: Request,
+                u: UserDB = Depends(require_role('admin', 'super_admin')),
+                db: Session = Depends(get_db)):
     target = db.query(UserDB).filter(UserDB.id == user_id).first()
     if not target:
         raise HTTPException(404, 'User not found')
     if target.id == u.id:
         raise HTTPException(400, 'Cannot delete your own account')
+    if target.role == 'super_admin' and u.role != 'super_admin':
+        raise HTTPException(403, 'Only super_admin can delete super_admin')
     db.delete(target); db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='delete_user',
+          status='success', request=request, target_type='user', target_id=user_id)
     return {'message': 'User deleted successfully'}
 
+
 @router.put('/admin/users/{user_id}/role')
-def update_role(user_id: str, body: dict, u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
-    if u.role != 'admin':
-        raise HTTPException(403, 'Admin access required')
+def update_role(user_id: str, body: dict, request: Request,
+                u: UserDB = Depends(require_role('admin', 'super_admin')),
+                db: Session = Depends(get_db)):
     target = db.query(UserDB).filter(UserDB.id == user_id).first()
     if not target:
         raise HTTPException(404, 'User not found')
     new_role = body.get('role')
-    if new_role not in ('admin', 'manager', 'employee'):
+    if new_role not in ('employee', 'manager', 'admin', 'super_admin'):
         raise HTTPException(400, 'Invalid role')
+    if new_role == 'super_admin' and u.role != 'super_admin':
+        raise HTTPException(403, 'Only super_admin can grant super_admin')
+    old = target.role
     target.role = new_role
     db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='change_role',
+          status='success', request=request, target_type='user', target_id=user_id,
+          details={'from': old, 'to': new_role})
     return {'message': 'Role updated', 'role': new_role}
+
+
+@router.get('/admin/audit-log')
+def audit_log_list(u: UserDB = Depends(require_role('admin', 'super_admin')),
+                   db: Session = Depends(get_db),
+                   limit: int = 100):
+    rows = db.query(AuditLogDB).order_by(AuditLogDB.created_at.desc()).limit(limit).all()
+    return [{'id': r.id, 'user_id': r.user_id, 'actor_email': r.actor_email,
+             'action': r.action, 'status': r.status,
+             'target_type': r.target_type, 'target_id': r.target_id,
+             'ip_address': r.ip_address, 'details': r.details,
+             'created_at': r.created_at.isoformat() if r.created_at else None}
+            for r in rows]
+
 
 @router.get('/')
 def root():
-    return {'message': 'HSI Enterprise Portal API v1.0', 'status': 'running'}
+    return {'message': 'HSI Enterprise Portal API v1.0', 'status': 'running',
+            'allowed_domain': ALLOWED_DOMAIN}
+
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────
 app.include_router(router)
+
+cors_origins = [o.strip() for o in os.environ.get('CORS_ORIGINS', '*').split(',') if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=['*'],
+    allow_origins=cors_origins or ['*'],
     allow_methods=['*'],
     allow_headers=['*'],
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
+logger.info(f"HSI API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} rounds")

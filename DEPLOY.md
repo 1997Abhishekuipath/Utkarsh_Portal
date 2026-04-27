@@ -31,14 +31,15 @@ Six containers wired up by `docker-compose.yml`:
 
 | Container    | Image                      | Purpose                                       |
 |-------------|---------------------------|-----------------------------------------------|
-| `db`         | postgres:16-alpine         | PostgreSQL 16 — primary data store            |
+| `db`         | postgres:16-alpine         | PostgreSQL 16 — WAL archiving enabled (Sprint F) |
 | `pgbouncer`  | bitnami/pgbouncer:1.22     | Connection pooler (500 client → 20 server)    |
 | `redis`      | redis:7-alpine             | Rate limiting + session metadata              |
-| `backend`    | local build (Python 3.11)  | FastAPI API server                            |
+| `backend`    | local build (Python 3.11)  | FastAPI API server + Sentry + Request-ID      |
 | `frontend`   | local build (Node 20/Nginx)| React SPA                                     |
-| `nginx`      | nginx:1.25-alpine          | TLS terminator + reverse proxy                |
+| `nginx`      | nginx:1.25-alpine          | TLS 1.3-only terminator + hardened headers    |
+| `backup`     | postgres:16-alpine         | Daily pg_basebackup + WAL archiving (Sprint F)|
 
-Volumes: `postgres_data`, `redis_data` — persist across `./setup.sh down/up`.
+Volumes: `postgres_data`, `redis_data`, `pg_wal_archive` — persist across `./setup.sh down/up`.
 
 ## Quick start
 

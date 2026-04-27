@@ -4,7 +4,7 @@
 HSI Employee Engagement Platform — converging current Enterprise Portal toward the full PRD scope (`HSI-PRD-EEP-2026-v1.0`). V1 is **web-only**; mobile apps deferred to backlog.
 
 **Date Started:** 2025-02
-**Status:** Sprint B complete (MFA + Redis rate-limit + DB-level domain CHECK + Postgres 16 in compose) · NPS/CSAT + Action Intelligence preserved as deep-dives under Customer pillar
+**Status:** Sprint C complete (Pillars + EDM + CMS + WebSocket live-sync) · NPS/CSAT + Action Intelligence folded under Customer pillar
 
 ---
 
@@ -99,14 +99,27 @@ HSI Employee Engagement Platform — converging current Enterprise Portal toward
 - [ ] **Sprint C will replace** with PRD home (EDM carousel + quotes + activity grid + 4 pillar cards)
 
 ### Pages
-- [x] /login — HSI branding · **2-step OTP login** when MFA enabled
+- [x] /login — HSI branding · 2-step OTP login when MFA enabled
 - [x] /register — pending-approval flow + domain hint
 - [x] /forgot-password — OTP-driven password reset
-- [x] / — current Enterprise Portal home (will be replaced Sprint C)
-- [x] /apps/:appId — 9 placeholder pages
-- [x] /apps/nps-csat — NPS & CSAT (kept; will fold under Customer pillar)
-- [x] /apps/survey-builder — Action Intelligence (kept; will fold under Customer pillar)
+- [x] / — **PRD home** (EDM carousel + 4 pillar cards + motivational quote + activity grid + leaderboard sidebar) (Sprint C)
+- [x] /pillar/:slug — **4 pillar pages** (Customer/Innovator/Employee/Shareholder) with hero + sub-EDM + 6-col icon grid (Sprint C)
+- [x] /apps/:appId — placeholder pages
+- [x] /apps/nps-csat — NPS & CSAT (folded under Customer pillar)
+- [x] /apps/survey-builder — Action Intelligence (folded under Customer pillar)
 - [x] /admin — User management panel
+- [x] /admin/content — **Content management** (4 tabs: Pillars / Icons / EDM / Quotes + Publish All) (Sprint C)
+
+### Sprint C — Content & Live Sync (Feb 2026)
+- [x] 5 new tables: `pillars`, `pillar_icons`, `edm_slides`, `motivational_quotes`, `publish_history`
+- [x] 16 admin CRUD endpoints (4 entity types × full GET/POST/PUT/DELETE) — all admin/super_admin gated, all audited
+- [x] Public read endpoints: `GET /api/content/home`, `GET /api/content/pillars/:slug`
+- [x] **WebSocket live-sync** at `/api/ws` — `services/ws.py` connection manager
+- [x] `POST /api/admin/publish` broadcasts to all subscribers within milliseconds
+- [x] Reusable components: `EdmCarousel`, `PillarCard`, `IconGrid`, `QuoteRibbon`, `TopBar`
+- [x] `useLiveContent` hook with auto-reconnect (1s → 15s exponential backoff)
+- [x] LIVE/OFFLINE indicator in red top bar
+- [x] Seed: 4 pillars + 24 icons + 7 EDM slides + 5 quotes — idempotent
 
 ---
 
@@ -147,25 +160,20 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 
 ---
 
-## Prioritized Backlog (post Sprint B)
+## Prioritized Backlog (post Sprint C)
 
-### P0 — Sprint C (Pillars + EDM + CMS + WebSocket)
-- [ ] `pillars`, `pillar_icons`, `edm_slides`, `motivational_quotes` tables + admin CRUD
-- [ ] Replace home `/` with PRD home: EDM carousel + quotes + activity grid + 4 pillar cards
-- [ ] 4 pillar pages (Customer / Innovator / Employee / Shareholder) — hero + sub-EDM + 6-col icon grid
-- [ ] Fold NPS/CSAT + Action Intelligence under Customer pillar
-- [ ] WebSocket "Publish All" live-sync (≤5s)
-
-### P1 — Sprint D (XP & Incentive Engine)
+### P0 — Sprint D (XP & Incentive Engine)
 - [ ] `best_practices`, `replications`, `xp_ledger`, `incentive_calculations`, `tech_days`, `certifications`
 - [ ] XP balance trigger + ART multipliers + INR rate config
 - [ ] Quarterly payout state machine
 - [ ] XP Detail + Incentive Statement modal panels
+- [ ] Replace mock `/dashboard/stats` and `/dashboard/score` with live data from xp_ledger
 
-### P2 — Sprint E (Notifications + Auto-triggers)
-- [ ] `notifications` + `user_notifications` tables
-- [ ] Admin notification composer
-- [ ] 7 auto-triggers + birthday `pg_cron` (50 XP)
+### P1 — Sprint E (Notifications + Auto-triggers)
+- [ ] `notifications` + `user_notifications` tables (replaces mock `/dashboard/announcements`)
+- [ ] Admin notification composer with target by all/user/role/practice/department + urgent flag + deep links
+- [ ] 7 auto-triggers (Birthday, Approved, Replication, Reminder, New Practice, Award, Announcement)
+- [ ] Birthday `pg_cron` (50 XP)
 
 ### P2 — Sprint F (Hardening + Ops)
 - [ ] pgBouncer transaction pooling
@@ -173,11 +181,12 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - [ ] TLS 1.3 only
 - [ ] WCAG 2.1 AA audit
 - [ ] 4 DB roles (`hsi_api`/`hsi_admin`/`hsi_readonly`/`hsi_migrate`) with SCRAM-SHA-256
+- [ ] Multi-instance WebSocket via Redis pub/sub (current ws.py is single-instance only)
 
 ### Deferred (Future)
 - React Native mobile apps (employee + admin)
-- MinIO file storage (when first feature needs it)
-- Push notifications
+- MinIO file storage (when first feature needs it — likely Sprint D for best-practice attachments)
+- Push notifications (web push or mobile)
 
 ---
 

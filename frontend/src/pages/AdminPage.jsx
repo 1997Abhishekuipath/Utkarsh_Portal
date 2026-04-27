@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-const ROLE_COLORS = { admin: "bg-red-100 text-red-700", manager: "bg-blue-100 text-blue-700", employee: "bg-emerald-100 text-emerald-700" };
+const ROLE_COLORS = { super_admin: "bg-purple-100 text-purple-700", admin: "bg-red-100 text-red-700", manager: "bg-blue-100 text-blue-700", employee: "bg-emerald-100 text-emerald-700" };
 
 export default function AdminPage() {
   const { user, logout, authHeader } = useAuth();
@@ -70,6 +70,10 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/admin/content" data-testid="admin-content-link"
+              className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">
+              <ChevronDown size={13} className="rotate-[-90deg]" /><span>Content</span>
+            </Link>
             <Link to="/" data-testid="back-to-dashboard-btn"
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">
               <ArrowLeft size={13} /><span>Dashboard</span>
@@ -164,6 +168,7 @@ export default function AdminPage() {
                         <option value="employee">Employee</option>
                         <option value="manager">Manager</option>
                         <option value="admin">Admin</option>
+                        {user?.role === "super_admin" && <option value="super_admin">Super Admin</option>}
                       </select>
                     </td>
                     <td className="px-4 py-3 text-sm text-[#475569]">{u.department || "—"}</td>

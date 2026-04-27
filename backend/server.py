@@ -148,6 +148,91 @@ class AuditLogDB(Base):
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+#  Sprint C — Content Models (Pillars, Icons, EDM slides, Quotes)
+# ═════════════════════════════════════════════════════════════════════════════
+class PillarDB(Base):
+    __tablename__ = 'pillars'
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    slug          = Column(String, unique=True, nullable=False, index=True)  # customer|innovator|employee|shareholder
+    name          = Column(String, nullable=False)
+    tagline       = Column(String, nullable=True)
+    gradient_from = Column(String, nullable=False, default='#CC0000')
+    gradient_to   = Column(String, nullable=False, default='#7A0000')
+    icon_name     = Column(String, nullable=True)              # lucide-react icon name
+    position      = Column(Integer, default=0)
+    is_published  = Column(Boolean, default=True)
+    updated_by    = Column(String, ForeignKey('users.id'), nullable=True)
+    updated_at    = Column(DateTime(timezone=True),
+                           default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class PillarIconDB(Base):
+    __tablename__ = 'pillar_icons'
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    pillar_id     = Column(String, ForeignKey('pillars.id', ondelete='CASCADE'), nullable=False, index=True)
+    name          = Column(String, nullable=False)
+    description   = Column(String, nullable=True)
+    lucide_icon   = Column(String, nullable=True)              # icon name from lucide-react
+    route         = Column(String, nullable=True)              # frontend route this icon links to
+    badge         = Column(String, nullable=True)              # 'hot' | 'new' | null
+    position      = Column(Integer, default=0)
+    is_published  = Column(Boolean, default=True)
+    updated_at    = Column(DateTime(timezone=True),
+                           default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class EdmSlideDB(Base):
+    __tablename__ = 'edm_slides'
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    scope          = Column(String, nullable=False, index=True)   # 'home' or pillar slug
+    title          = Column(String, nullable=False)
+    subtitle       = Column(String, nullable=True)
+    gradient_from  = Column(String, default='#CC0000')
+    gradient_to    = Column(String, default='#7A0000')
+    image_url      = Column(String, nullable=True)
+    link           = Column(String, nullable=True)
+    position       = Column(Integer, default=0)
+    starts_at      = Column(DateTime(timezone=True), nullable=True)
+    ends_at        = Column(DateTime(timezone=True), nullable=True)
+    is_published   = Column(Boolean, default=True)
+    updated_at     = Column(DateTime(timezone=True),
+                            default=lambda: datetime.now(timezone.utc),
+                            onupdate=lambda: datetime.now(timezone.utc))
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint(
+            "scope IN ('home','customer','innovator','employee','shareholder')",
+            name='chk_edm_scope'),
+    )
+
+
+class QuoteDB(Base):
+    __tablename__ = 'motivational_quotes'
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    text         = Column(String, nullable=False)
+    author       = Column(String, nullable=True)
+    position     = Column(Integer, default=0)
+    is_published = Column(Boolean, default=True)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class PublishHistoryDB(Base):
+    """Each admin 'Publish All' click = one row. WebSocket clients are notified."""
+    __tablename__ = 'publish_history'
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    scope         = Column(String, nullable=False)             # 'all' | 'home' | pillar slug
+    published_by  = Column(String, ForeignKey('users.id'), nullable=True)
+    actor_email   = Column(String, nullable=True)
+    note          = Column(String, nullable=True)
+    published_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -229,6 +314,53 @@ class ResetPasswordReq(BaseModel):
     email: EmailStr
     code: str
     new_password: str
+
+
+# ── Sprint C — content schemas ────────────────────────────────────────────────
+class PillarUpsertReq(BaseModel):
+    slug: str
+    name: str
+    tagline: Optional[str] = None
+    gradient_from: str = '#CC0000'
+    gradient_to: str = '#7A0000'
+    icon_name: Optional[str] = None
+    position: int = 0
+    is_published: bool = True
+
+
+class PillarIconUpsertReq(BaseModel):
+    pillar_id: str
+    name: str
+    description: Optional[str] = None
+    lucide_icon: Optional[str] = None
+    route: Optional[str] = None
+    badge: Optional[str] = None         # 'hot' | 'new' | None
+    position: int = 0
+    is_published: bool = True
+
+
+class EdmSlideUpsertReq(BaseModel):
+    scope: str                          # home | customer | innovator | employee | shareholder
+    title: str
+    subtitle: Optional[str] = None
+    gradient_from: str = '#CC0000'
+    gradient_to: str = '#7A0000'
+    image_url: Optional[str] = None
+    link: Optional[str] = None
+    position: int = 0
+    is_published: bool = True
+
+
+class QuoteUpsertReq(BaseModel):
+    text: str
+    author: Optional[str] = None
+    position: int = 0
+    is_published: bool = True
+
+
+class PublishReq(BaseModel):
+    scope: str = 'all'                  # 'all' | 'home' | pillar slug
+    note: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -889,6 +1021,349 @@ def root():
         'ses_configured': ses_is_configured(),
         'redis_active': is_redis_active(),
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  Sprint C — Content (Pillars, Icons, EDM, Quotes) + Publish + WebSocket
+# ═════════════════════════════════════════════════════════════════════════════
+from services.ws import manager as ws_manager
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+def _pillar_to_dict(p: PillarDB) -> dict:
+    return {
+        'id': p.id, 'slug': p.slug, 'name': p.name, 'tagline': p.tagline,
+        'gradient_from': p.gradient_from, 'gradient_to': p.gradient_to,
+        'icon_name': p.icon_name, 'position': p.position,
+        'is_published': p.is_published,
+        'updated_at': p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _icon_to_dict(i: PillarIconDB) -> dict:
+    return {
+        'id': i.id, 'pillar_id': i.pillar_id, 'name': i.name,
+        'description': i.description, 'lucide_icon': i.lucide_icon,
+        'route': i.route, 'badge': i.badge, 'position': i.position,
+        'is_published': i.is_published,
+    }
+
+
+def _edm_to_dict(s: EdmSlideDB) -> dict:
+    return {
+        'id': s.id, 'scope': s.scope, 'title': s.title, 'subtitle': s.subtitle,
+        'gradient_from': s.gradient_from, 'gradient_to': s.gradient_to,
+        'image_url': s.image_url, 'link': s.link, 'position': s.position,
+        'starts_at': s.starts_at.isoformat() if s.starts_at else None,
+        'ends_at':   s.ends_at.isoformat()   if s.ends_at   else None,
+        'is_published': s.is_published,
+    }
+
+
+def _quote_to_dict(q: QuoteDB) -> dict:
+    return {'id': q.id, 'text': q.text, 'author': q.author,
+            'position': q.position, 'is_published': q.is_published}
+
+
+def _published_edm(db: Session, scope: str) -> List[dict]:
+    now = datetime.now(timezone.utc)
+    rows = (db.query(EdmSlideDB)
+              .filter(EdmSlideDB.scope == scope, EdmSlideDB.is_published == True)  # noqa: E712
+              .order_by(EdmSlideDB.position.asc(), EdmSlideDB.created_at.desc())
+              .all())
+    out = []
+    for s in rows:
+        if s.starts_at and s.starts_at > now:    # not yet visible
+            continue
+        if s.ends_at and s.ends_at < now:        # expired
+            continue
+        out.append(_edm_to_dict(s))
+    return out
+
+
+# ── Public read-only content (any logged-in user) ─────────────────────────────
+@router.get('/content/home')
+def content_home(_u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    pillars = (db.query(PillarDB)
+                 .filter(PillarDB.is_published == True)             # noqa: E712
+                 .order_by(PillarDB.position.asc())
+                 .all())
+    quotes = (db.query(QuoteDB)
+                .filter(QuoteDB.is_published == True)              # noqa: E712
+                .order_by(QuoteDB.position.asc(), QuoteDB.created_at.desc())
+                .all())
+    return {
+        'edm':     _published_edm(db, 'home'),
+        'pillars': [_pillar_to_dict(p) for p in pillars],
+        'quotes':  [_quote_to_dict(q) for q in quotes],
+    }
+
+
+@router.get('/content/pillars/{slug}')
+def content_pillar(slug: str,
+                   _u: UserDB = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    p = db.query(PillarDB).filter(PillarDB.slug == slug, PillarDB.is_published == True).first()  # noqa: E712
+    if not p:
+        raise HTTPException(404, 'Pillar not found')
+    icons = (db.query(PillarIconDB)
+               .filter(PillarIconDB.pillar_id == p.id, PillarIconDB.is_published == True)  # noqa: E712
+               .order_by(PillarIconDB.position.asc(), PillarIconDB.created_at.desc())
+               .all())
+    return {
+        'pillar': _pillar_to_dict(p),
+        'edm':    _published_edm(db, slug),
+        'icons':  [_icon_to_dict(i) for i in icons],
+    }
+
+
+# ── Admin content CRUD ────────────────────────────────────────────────────────
+def _admin_role(u: UserDB = Depends(require_role('admin', 'super_admin'))) -> UserDB:
+    return u
+
+
+@router.get('/admin/pillars')
+def admin_pillars(u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    return [_pillar_to_dict(p) for p in
+            db.query(PillarDB).order_by(PillarDB.position.asc()).all()]
+
+
+@router.post('/admin/pillars')
+def admin_pillar_create(body: PillarUpsertReq, request: Request,
+                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    if body.slug not in ('customer', 'innovator', 'employee', 'shareholder'):
+        raise HTTPException(400, 'Slug must be one of: customer|innovator|employee|shareholder')
+    if db.query(PillarDB).filter(PillarDB.slug == body.slug).first():
+        raise HTTPException(409, 'Pillar with this slug already exists')
+    p = PillarDB(id=str(uuid.uuid4()), updated_by=u.id, **body.dict())
+    db.add(p); db.commit(); db.refresh(p)
+    audit(db, user_id=u.id, actor_email=u.email, action='pillar_create',
+          status='success', request=request, target_type='pillar', target_id=p.id,
+          details={'slug': p.slug})
+    return _pillar_to_dict(p)
+
+
+@router.put('/admin/pillars/{pillar_id}')
+def admin_pillar_update(pillar_id: str, body: PillarUpsertReq, request: Request,
+                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    p = db.query(PillarDB).filter(PillarDB.id == pillar_id).first()
+    if not p:
+        raise HTTPException(404, 'Pillar not found')
+    for k, v in body.dict().items():
+        setattr(p, k, v)
+    p.updated_by = u.id
+    db.commit(); db.refresh(p)
+    audit(db, user_id=u.id, actor_email=u.email, action='pillar_update',
+          status='success', request=request, target_type='pillar', target_id=p.id)
+    return _pillar_to_dict(p)
+
+
+@router.delete('/admin/pillars/{pillar_id}')
+def admin_pillar_delete(pillar_id: str, request: Request,
+                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    p = db.query(PillarDB).filter(PillarDB.id == pillar_id).first()
+    if not p:
+        raise HTTPException(404, 'Pillar not found')
+    db.delete(p); db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='pillar_delete',
+          status='success', request=request, target_type='pillar', target_id=pillar_id)
+    return {'message': 'Pillar deleted'}
+
+
+@router.get('/admin/pillar-icons')
+def admin_icons(u: UserDB = Depends(_admin_role), db: Session = Depends(get_db),
+                pillar_id: Optional[str] = None):
+    q = db.query(PillarIconDB)
+    if pillar_id:
+        q = q.filter(PillarIconDB.pillar_id == pillar_id)
+    return [_icon_to_dict(i) for i in q.order_by(PillarIconDB.position.asc()).all()]
+
+
+@router.post('/admin/pillar-icons')
+def admin_icon_create(body: PillarIconUpsertReq, request: Request,
+                      u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    if not db.query(PillarDB).filter(PillarDB.id == body.pillar_id).first():
+        raise HTTPException(404, 'Pillar not found')
+    i = PillarIconDB(id=str(uuid.uuid4()), **body.dict())
+    db.add(i); db.commit(); db.refresh(i)
+    audit(db, user_id=u.id, actor_email=u.email, action='icon_create',
+          status='success', request=request, target_type='icon', target_id=i.id,
+          details={'name': i.name, 'pillar_id': i.pillar_id})
+    return _icon_to_dict(i)
+
+
+@router.put('/admin/pillar-icons/{icon_id}')
+def admin_icon_update(icon_id: str, body: PillarIconUpsertReq, request: Request,
+                      u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    i = db.query(PillarIconDB).filter(PillarIconDB.id == icon_id).first()
+    if not i:
+        raise HTTPException(404, 'Icon not found')
+    for k, v in body.dict().items():
+        setattr(i, k, v)
+    db.commit(); db.refresh(i)
+    audit(db, user_id=u.id, actor_email=u.email, action='icon_update',
+          status='success', request=request, target_type='icon', target_id=icon_id)
+    return _icon_to_dict(i)
+
+
+@router.delete('/admin/pillar-icons/{icon_id}')
+def admin_icon_delete(icon_id: str, request: Request,
+                      u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    i = db.query(PillarIconDB).filter(PillarIconDB.id == icon_id).first()
+    if not i:
+        raise HTTPException(404, 'Icon not found')
+    db.delete(i); db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='icon_delete',
+          status='success', request=request, target_type='icon', target_id=icon_id)
+    return {'message': 'Icon deleted'}
+
+
+@router.get('/admin/edm-slides')
+def admin_edm(u: UserDB = Depends(_admin_role), db: Session = Depends(get_db),
+              scope: Optional[str] = None):
+    q = db.query(EdmSlideDB)
+    if scope:
+        q = q.filter(EdmSlideDB.scope == scope)
+    return [_edm_to_dict(s) for s in q.order_by(EdmSlideDB.position.asc()).all()]
+
+
+@router.post('/admin/edm-slides')
+def admin_edm_create(body: EdmSlideUpsertReq, request: Request,
+                     u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    if body.scope not in ('home', 'customer', 'innovator', 'employee', 'shareholder'):
+        raise HTTPException(400, 'Invalid scope')
+    s = EdmSlideDB(id=str(uuid.uuid4()), **body.dict())
+    db.add(s); db.commit(); db.refresh(s)
+    audit(db, user_id=u.id, actor_email=u.email, action='edm_create',
+          status='success', request=request, target_type='edm_slide', target_id=s.id,
+          details={'scope': s.scope, 'title': s.title})
+    return _edm_to_dict(s)
+
+
+@router.put('/admin/edm-slides/{slide_id}')
+def admin_edm_update(slide_id: str, body: EdmSlideUpsertReq, request: Request,
+                     u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    s = db.query(EdmSlideDB).filter(EdmSlideDB.id == slide_id).first()
+    if not s:
+        raise HTTPException(404, 'Slide not found')
+    for k, v in body.dict().items():
+        setattr(s, k, v)
+    db.commit(); db.refresh(s)
+    audit(db, user_id=u.id, actor_email=u.email, action='edm_update',
+          status='success', request=request, target_type='edm_slide', target_id=slide_id)
+    return _edm_to_dict(s)
+
+
+@router.delete('/admin/edm-slides/{slide_id}')
+def admin_edm_delete(slide_id: str, request: Request,
+                     u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    s = db.query(EdmSlideDB).filter(EdmSlideDB.id == slide_id).first()
+    if not s:
+        raise HTTPException(404, 'Slide not found')
+    db.delete(s); db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='edm_delete',
+          status='success', request=request, target_type='edm_slide', target_id=slide_id)
+    return {'message': 'Slide deleted'}
+
+
+@router.get('/admin/quotes')
+def admin_quotes(u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    return [_quote_to_dict(q) for q in
+            db.query(QuoteDB).order_by(QuoteDB.position.asc()).all()]
+
+
+@router.post('/admin/quotes')
+def admin_quote_create(body: QuoteUpsertReq, request: Request,
+                       u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    q = QuoteDB(id=str(uuid.uuid4()), **body.dict())
+    db.add(q); db.commit(); db.refresh(q)
+    audit(db, user_id=u.id, actor_email=u.email, action='quote_create',
+          status='success', request=request, target_type='quote', target_id=q.id)
+    return _quote_to_dict(q)
+
+
+@router.put('/admin/quotes/{quote_id}')
+def admin_quote_update(quote_id: str, body: QuoteUpsertReq, request: Request,
+                       u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    q = db.query(QuoteDB).filter(QuoteDB.id == quote_id).first()
+    if not q:
+        raise HTTPException(404, 'Quote not found')
+    for k, v in body.dict().items():
+        setattr(q, k, v)
+    db.commit(); db.refresh(q)
+    audit(db, user_id=u.id, actor_email=u.email, action='quote_update',
+          status='success', request=request, target_type='quote', target_id=quote_id)
+    return _quote_to_dict(q)
+
+
+@router.delete('/admin/quotes/{quote_id}')
+def admin_quote_delete(quote_id: str, request: Request,
+                       u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    q = db.query(QuoteDB).filter(QuoteDB.id == quote_id).first()
+    if not q:
+        raise HTTPException(404, 'Quote not found')
+    db.delete(q); db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='quote_delete',
+          status='success', request=request, target_type='quote', target_id=quote_id)
+    return {'message': 'Quote deleted'}
+
+
+# ── Publish All — broadcast to WebSocket clients ──────────────────────────────
+@router.post('/admin/publish')
+async def admin_publish(body: PublishReq, request: Request,
+                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
+    valid = ('all', 'home', 'customer', 'innovator', 'employee', 'shareholder')
+    if body.scope not in valid:
+        raise HTTPException(400, f"scope must be one of: {', '.join(valid)}")
+    h = PublishHistoryDB(scope=body.scope, published_by=u.id,
+                         actor_email=u.email, note=body.note)
+    db.add(h); db.commit(); db.refresh(h)
+    audit(db, user_id=u.id, actor_email=u.email, action='content_publish',
+          status='success', request=request, target_type='publish',
+          target_id=str(h.id), details={'scope': body.scope, 'note': body.note})
+    payload = {
+        'type': 'content_published',
+        'scope': body.scope,
+        'at': h.published_at.isoformat(),
+        'by': u.email,
+        'id': h.id,
+    }
+    await ws_manager.broadcast(payload)
+    return {'message': 'Published',
+            'subscribers_notified': ws_manager.count, 'event': payload}
+
+
+@router.get('/admin/publish-history')
+def admin_publish_history(_u: UserDB = Depends(_admin_role),
+                          db: Session = Depends(get_db), limit: int = 50):
+    rows = (db.query(PublishHistoryDB)
+              .order_by(PublishHistoryDB.published_at.desc())
+              .limit(limit).all())
+    return [{'id': r.id, 'scope': r.scope, 'actor_email': r.actor_email,
+             'note': r.note,
+             'published_at': r.published_at.isoformat() if r.published_at else None}
+            for r in rows]
+
+
+# ── WebSocket endpoint for clients ────────────────────────────────────────────
+# NOTE: WebSocket lives at /api/ws (NOT /ws) so it routes through the same
+# kubernetes/nginx ingress rule as REST. Clients connect to:
+#   wss://<host>/api/ws
+@app.websocket('/api/ws')
+async def ws_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        # Send a hello so client knows it's connected
+        await websocket.send_text('{"type":"hello","msg":"hsi-platform live channel"}')
+        # Keep alive — clients can send pings; we just echo to keep connection healthy
+        while True:
+            data = await websocket.receive_text()
+            if data == 'ping':
+                await websocket.send_text('{"type":"pong"}')
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
+    except Exception:                                          # noqa: BLE001
+        await ws_manager.disconnect(websocket)
 
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────

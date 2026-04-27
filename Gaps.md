@@ -16,16 +16,45 @@
 
 ---
 
-## TL;DR — Severity Snapshot (post Sprint B)
+## TL;DR — Severity Snapshot (post Sprint C)
 
-| Severity | Open | Closed (A+B) | Theme |
+| Severity | Open | Closed (A+B+C) | Theme |
 |---|---|---|---|
-| 🔴 Critical | 4 (was 7) | **3 closed** | Auth foundation hardened + MFA + rate limiting. Remaining: pillar nav/EDM, XP engine, content/CMS, replications, WebSocket. |
-| 🟠 High | 5 (was 9) | **4 closed** | bcrypt 12, audit log, sessions, refresh rotation, pending approval, super_admin, domain CHECK (DB+API), MFA, rate limiting, password reset — **closed**. Remaining: pgBouncer, MinIO, WebSocket, 4 DB roles, Sentry. |
-| 🟡 Medium | 11 | 0 | Content management surfaces — Sprint C/D. |
+| 🔴 Critical | 2 (was 7) | **5 closed** | Auth foundation + MFA + content/CMS + EDM + 4 pillars + WebSocket live-sync. Remaining: XP engine, replications/best-practices/tech-days/certifications. |
+| 🟠 High | 5 (was 9) | **4 closed** | bcrypt 12, audit log, sessions, refresh rotation, pending approval, super_admin, domain CHECK (DB+API), MFA, rate limiting, password reset, **WebSocket live-sync**. Remaining: pgBouncer, MinIO, 4 DB roles, Sentry, pg_cron, WAL. |
+| 🟡 Medium | 9 (was 11) | **2 closed** | Admin CMS for pillars/icons/EDM/quotes shipped. Remaining: notifications, push composer, analytics dashboards, etc. |
 | 🟢 Low | 5 | 0 | Branding, doc control. |
 
-**Progress: ~18% of total PRD scope** (was ~12% post Sprint A, ~5–8% baseline).
+**Progress: ~32% of total PRD scope** (was ~18% post Sprint B, ~12% post Sprint A, ~5–8% baseline).
+
+---
+
+## Sprint C — DONE (Feb 2026)
+
+**Goal:** Pillars + EDM + CMS + WebSocket live-sync. NPS/CSAT and Action Intelligence preserved as deep-dives under Customer pillar (per ADR-003).
+
+| Item | Status | Notes |
+|---|---|---|
+| `pillars`, `pillar_icons`, `edm_slides`, `motivational_quotes`, `publish_history` schemas | ✅ | All 5 tables created via SQLAlchemy `create_all` with CHECK constraints (e.g. `chk_edm_scope`). |
+| Public read endpoints | ✅ | `GET /api/content/home`, `GET /api/content/pillars/:slug` — auth-gated, returns scoped EDM + filters by published + by date window (`starts_at`/`ends_at`). |
+| Admin CRUD endpoints (16 total) | ✅ | `/admin/pillars`, `/admin/pillar-icons`, `/admin/edm-slides`, `/admin/quotes` — full GET/POST/PUT/DELETE, all guarded by admin/super_admin role. |
+| `POST /admin/publish` + `GET /admin/publish-history` | ✅ | Records to `publish_history` table, broadcasts to WS clients. Verified: publish with 1 connected subscriber → `subscribers_notified: 1`, payload `{type, scope, at, by, id}`. |
+| WebSocket endpoint at `/api/ws` | ✅ | `services/ws.py` connection manager with thread-safe set + auto-clean of dead connections. Sends `hello` on connect, replies `pong` to `ping`, broadcasts publish events. **End-to-end verified**: subscribed client received broadcast within milliseconds of admin publish. |
+| Replace home `/` with PRD home (EDM carousel + 4 pillar cards + quotes + activity grid) | ✅ | New `HomePage.jsx`. Layout: red top bar (with mini-stats + user menu) → home EDM carousel → THE FOUR PILLARS grid → motivational quote ribbon → activity panel + leaderboard/announcements/pending/upcoming sidebar. |
+| 4 pillar pages with hero + sub-EDM + 6-col icon grid | ✅ | Single generic `PillarPage.jsx` driven by `:slug` param. Hero gradient swaps to pillar's brand colors. 6-col responsive icon grid (drops to 3-col / 2-col on smaller screens). |
+| NPS/CSAT + Action Intelligence folded under Customer pillar | ✅ | Customer pillar's first 2 icons link to `/apps/nps-csat` (badge: `hot`) and `/apps/survey-builder` (badge: `new`) respectively. Existing pages preserved. |
+| Live update — admin publish triggers re-fetch within ≤5s on home + pillar pages | ✅ | `useLiveContent` hook auto-reconnects with exponential backoff (1s → 15s); home re-fetches on `scope=all|home`, pillar re-fetches on `scope=all|<slug>`. **WS LIVE/OFFLINE indicator** in red top bar. |
+| Admin Content Management UI | ✅ | New `AdminContentPage.jsx` at `/admin/content`. 4 tabs (Pillars / Icons / EDM / Quotes) with inline create+edit forms, filter dropdowns (icon-by-pillar, EDM-by-scope), and a `Publish All` button in the header. |
+| Reusable components | ✅ | `EdmCarousel`, `PillarCard`, `IconGrid`, `QuoteRibbon`, `TopBar`, `useLiveContent` hook. |
+| Seed data | ✅ | 4 pillars + 24 icons (6/pillar) + 7 EDM slides + 5 quotes — seeded idempotently via `_seed_content()` in `seed.py`. |
+
+### Verified end-to-end
+- ✅ `GET /api/content/home` → 4 pillars, 3 home EDM slides, 5 quotes
+- ✅ `GET /api/content/pillars/customer` → Customer pillar with 6 icons, including NPS/CSAT and Action Intelligence as the first 2 entries
+- ✅ `POST /api/admin/publish` → broadcast to all WS subscribers; payload includes scope, at, by, id; `subscribers_notified` count returned
+- ✅ Home page: pillars-section selector visible, EDM carousel mounted, quotes ribbon mounted
+- ✅ Pillar page: pillar-icon-grid-section selector visible, hero color matches pillar gradient
+- ✅ Admin Content page: 4 tabs (`tab-pillars`, `tab-icons`, `tab-edm`, `tab-quotes`) all visible
 
 ---
 
@@ -96,10 +125,8 @@
 
 | # | PRD Requirement | Current State | Sprint |
 |---|---|---|---|
-| 1 | **EDM Carousel + Pillar nav + 4 pillar pages** (Customer/Innovator/Employee/Shareholder) | Generic dashboard | **C** |
-| 2 | **XP ledger + ART multipliers + INR incentive engine + quarterly payout** | Single `xp_points` integer | **D** |
-| 3 | **Best Practices / Replications / Tech Days / Certifications** workflows | None | **D** |
-| 4 | **WebSocket live admin→app sync** (≤5s after Publish All) | None | **C** |
+| 1 | **XP ledger + ART multipliers + INR incentive engine + quarterly payout** | Single `xp_points` integer | **D** |
+| 2 | **Best Practices / Replications / Tech Days / Certifications** workflows | None | **D** |
 
 ## Still Open — High (P1)
 

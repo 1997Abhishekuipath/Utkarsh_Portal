@@ -5,8 +5,10 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import HomePage from "./pages/HomePage";
+import PillarPage from "./pages/PillarPage";
 import AppPage from "./pages/AppPage";
 import AdminPage from "./pages/AdminPage";
+import AdminContentPage from "./pages/AdminContentPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
 
@@ -36,10 +38,12 @@ function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/pillar/:slug" element={<ProtectedRoute><PillarPage /></ProtectedRoute>} />
           <Route path="/apps/nps-csat" element={<ProtectedRoute><NPSCsatPage /></ProtectedRoute>} />
           <Route path="/apps/survey-builder" element={<ProtectedRoute><ActionIntelligencePage /></ProtectedRoute>} />
           <Route path="/apps/:appId" element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPage /></ProtectedRoute>} />
+          <Route path="/admin/content" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminContentPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -3,13 +3,14 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import HomePage from "./pages/HomePage";
 import AppPage from "./pages/AppPage";
 import AdminPage from "./pages/AdminPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
 
-const ProtectedRoute = ({ children, requiredRole }) => {
+const ProtectedRoute = ({ children, requiredRoles }) => {
   const { user, loading } = useAuth();
   if (loading) {
     return (
@@ -22,7 +23,7 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (requiredRole && user.role !== requiredRole) return <Navigate to="/" replace />;
+  if (requiredRoles && !requiredRoles.includes(user.role)) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -33,11 +34,12 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
           <Route path="/apps/nps-csat" element={<ProtectedRoute><NPSCsatPage /></ProtectedRoute>} />
           <Route path="/apps/survey-builder" element={<ProtectedRoute><ActionIntelligencePage /></ProtectedRoute>} />
           <Route path="/apps/:appId" element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

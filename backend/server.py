@@ -23,11 +23,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
-import os, logging, uuid, bcrypt, jwt, hashlib, secrets
+import os, logging, uuid, bcrypt, jwt, hashlib, secrets, random, re
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from pathlib import Path
+
+from services.email import send_otp as ses_send_otp, is_configured as ses_is_configured
+from services.rate_limit import check_or_raise as rl_check, is_redis_active
 
 ROOT_DIR = Path(__file__).parent
 
@@ -43,6 +46,10 @@ ACCESS_TTL_MIN  = int(os.environ.get('ACCESS_TTL_MIN', '15'))
 REFRESH_TTL_DAY = int(os.environ.get('REFRESH_TTL_DAY', '30'))
 LOCKOUT_FAILS   = int(os.environ.get('LOCKOUT_FAILS', '5'))
 LOCKOUT_MIN     = int(os.environ.get('LOCKOUT_MIN', '15'))
+MFA_ENABLED     = os.environ.get('MFA_ENABLED', 'false').lower() in ('1', 'true', 'yes')
+OTP_LENGTH      = int(os.environ.get('OTP_LENGTH', '6'))
+OTP_TTL_MIN     = int(os.environ.get('OTP_TTL_MIN', '10'))
+OTP_MAX_ATTEMPTS = int(os.environ.get('OTP_MAX_ATTEMPTS', '3'))
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -85,6 +92,7 @@ class UserDB(Base):
 
     __table_args__ = (
         CheckConstraint("role IN ('employee','manager','admin','super_admin')", name='chk_user_role'),
+        CheckConstraint("email ILIKE '%@hitachi-systems.com'", name='chk_user_email_domain'),
     )
 
 
@@ -143,6 +151,37 @@ class AuditLogDB(Base):
 Base.metadata.create_all(bind=engine)
 
 
+# ── Idempotent post-migrate steps ─────────────────────────────────────────────
+def _ensure_domain_check_constraint():
+    """SQLAlchemy create_all does not retro-add CHECK constraints to existing
+    tables. This adds the email-domain CHECK on first run if missing."""
+    domain = ALLOWED_DOMAIN.replace("'", "''")
+    sql = f"""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'chk_user_email_domain'
+        ) THEN
+            BEGIN
+                ALTER TABLE users
+                ADD CONSTRAINT chk_user_email_domain
+                CHECK (email ILIKE '%@{domain}');
+            EXCEPTION WHEN check_violation THEN
+                RAISE NOTICE 'Some existing users violate domain check; skipping';
+            END;
+        END IF;
+    END$$;
+    """
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(sql)
+    except Exception as e:                                          # noqa: BLE001
+        logging.warning(f"[migration] domain CHECK setup skipped: {e}")
+
+
+_ensure_domain_check_constraint()
+
+
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 class RegisterReq(BaseModel):
     name: str
@@ -171,6 +210,27 @@ class ApproveUserReq(BaseModel):
     role: Optional[str] = None        # optional override on approval
 
 
+class VerifyOtpReq(BaseModel):
+    email: EmailStr
+    code: str
+    purpose: str = 'login'            # login|register|reset_password
+
+
+class ResendOtpReq(BaseModel):
+    email: EmailStr
+    purpose: str = 'login'
+
+
+class ForgotPasswordReq(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordReq(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
@@ -196,6 +256,59 @@ def make_access_token(user_id: str, email: str, role: str, sess_id: str) -> str:
          'iat': datetime.now(timezone.utc), 'iss': 'hsi-platform', 'type': 'access'},
         JWT_SECRET, algorithm=JWT_ALGO,
     )
+
+
+# ── OTP helpers ───────────────────────────────────────────────────────────────
+def _generate_otp() -> str:
+    return ''.join(secrets.choice('0123456789') for _ in range(OTP_LENGTH))
+
+
+def _create_and_send_otp(db: Session, email: str, purpose: str,
+                         user_id: Optional[str] = None) -> dict:
+    """Generate, store, and email an OTP. Invalidates prior OTPs for the same
+    email+purpose. Returns {'otp_id': str, 'expires_in_sec': int, 'email_sent': bool}.
+    """
+    # Invalidate any active OTPs for this email+purpose
+    now = datetime.now(timezone.utc)
+    db.query(OtpCodeDB).filter(
+        OtpCodeDB.email == email,
+        OtpCodeDB.purpose == purpose,
+        OtpCodeDB.is_used == False,                                # noqa: E712
+    ).update({'is_used': True})
+    db.commit()
+
+    code = _generate_otp()
+    rec = OtpCodeDB(
+        id=str(uuid.uuid4()), user_id=user_id, email=email,
+        code_hash=sha256_hex(code), purpose=purpose,
+        expires_at=now + timedelta(minutes=OTP_TTL_MIN),
+    )
+    db.add(rec); db.commit(); db.refresh(rec)
+
+    sent, _ = ses_send_otp(email, code, purpose=purpose)
+    return {'otp_id': rec.id, 'expires_in_sec': OTP_TTL_MIN * 60, 'email_sent': sent}
+
+
+def _verify_otp(db: Session, email: str, code: str, purpose: str) -> OtpCodeDB:
+    now = datetime.now(timezone.utc)
+    rec = (db.query(OtpCodeDB)
+             .filter(OtpCodeDB.email == email, OtpCodeDB.purpose == purpose,
+                     OtpCodeDB.is_used == False)                   # noqa: E712
+             .order_by(OtpCodeDB.created_at.desc())
+             .first())
+    if not rec or rec.expires_at <= now:
+        raise HTTPException(400, 'OTP expired or not found. Request a new code.')
+    if rec.attempts >= OTP_MAX_ATTEMPTS:
+        rec.is_used = True; db.commit()
+        raise HTTPException(429, 'Too many attempts. Request a new code.')
+    rec.attempts += 1
+    if rec.code_hash != sha256_hex(code):
+        db.commit()
+        remaining = OTP_MAX_ATTEMPTS - rec.attempts
+        raise HTTPException(400, f"Invalid code. {remaining} attempt(s) remaining.")
+    rec.is_used = True
+    db.commit()
+    return rec
 
 
 def make_refresh_token() -> str:
@@ -342,6 +455,12 @@ def _create_session(db: Session, user: UserDB, request: Request) -> tuple[str, s
 def login(data: LoginReq, request: Request, db: Session = Depends(get_db)):
     email = data.email.lower()
     validate_domain(email)
+
+    # Rate limit: 10 login attempts per minute per IP (PRD §4.4)
+    meta = client_meta(request)
+    rl_check('login', meta['ip'] or 'unknown', 10, 60,
+             detail='Too many login attempts. Try again in a minute.')
+
     u = db.query(UserDB).filter(UserDB.email == email).first()
 
     # Lockout check (PRD §4.4)
@@ -367,18 +486,143 @@ def login(data: LoginReq, request: Request, db: Session = Depends(get_db)):
               status='failure', request=request)
         raise HTTPException(403, 'Account pending admin approval')
 
-    # Success: reset lockout, update last_login, create session
+    # Password OK + active. Reset lockout counters early.
     u.failed_attempts = 0
     u.locked_until = None
+    db.commit()
+
+    if MFA_ENABLED:
+        # Rate limit OTP issuance: 5 per hour per email (PRD §4.4)
+        rl_check('otp_send', email, 5, 3600,
+                 detail='Too many OTP requests. Try again later.')
+        info = _create_and_send_otp(db, email, purpose='login', user_id=u.id)
+        audit(db, user_id=u.id, actor_email=email, action='login_otp_sent',
+              status='success', request=request,
+              details={'otp_id': info['otp_id'], 'email_sent': info['email_sent']})
+        return {
+            'requires_otp': True,
+            'message': 'Verification code sent to your email.',
+            'email': email,
+            'otp_id': info['otp_id'],
+            'expires_in_sec': info['expires_in_sec'],
+            'email_sent': info['email_sent'],
+        }
+
+    # MFA disabled — issue tokens immediately (current default; switch off in prod)
     u.last_login_at = now
     db.commit()
     access, refresh = _create_session(db, u, request)
     audit(db, user_id=u.id, actor_email=email, action='login_success',
-          status='success', request=request)
+          status='success', request=request, details={'mfa': False})
     return {
         'access_token': access, 'refresh_token': refresh,
         'token_type': 'bearer', 'user': user_to_dict(u),
     }
+
+
+@router.post('/auth/verify-otp')
+def verify_otp(data: VerifyOtpReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    purpose = data.purpose
+    if purpose not in ('login', 'register', 'reset_password'):
+        raise HTTPException(400, 'Invalid purpose')
+
+    # Rate limit verify: 5/min per email
+    rl_check('otp_verify', email, 5, 60,
+             detail='Too many verification attempts. Slow down.')
+
+    rec = _verify_otp(db, email, data.code, purpose)
+
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+    if not u or not u.is_active:
+        raise HTTPException(403, 'User not found or inactive')
+
+    if purpose == 'login':
+        u.last_login_at = datetime.now(timezone.utc)
+        db.commit()
+        access, refresh = _create_session(db, u, request)
+        audit(db, user_id=u.id, actor_email=email, action='login_success',
+              status='success', request=request, details={'mfa': True, 'otp_id': rec.id})
+        return {'access_token': access, 'refresh_token': refresh,
+                'token_type': 'bearer', 'user': user_to_dict(u)}
+
+    if purpose == 'register':
+        u.is_verified = True
+        db.commit()
+        audit(db, user_id=u.id, actor_email=email, action='email_verified',
+              status='success', request=request)
+        return {'message': 'Email verified', 'user': user_to_dict(u)}
+
+    # reset_password: caller must use /auth/reset-password (which re-verifies + sets pw)
+    raise HTTPException(400, 'Use /auth/reset-password to complete password reset')
+
+
+@router.post('/auth/resend-otp')
+def resend_otp(data: ResendOtpReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    if data.purpose not in ('login', 'register', 'reset_password'):
+        raise HTTPException(400, 'Invalid purpose')
+
+    # Rate limit: 5/hour/email + 1/30s/email throttle
+    rl_check('otp_send', email, 5, 3600,
+             detail='Too many OTP requests. Try again later.')
+    rl_check('otp_resend', email, 1, 30,
+             detail='Please wait before requesting another code.')
+
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+    # Don't leak existence on resend; always return generic success
+    if u and u.is_active:
+        info = _create_and_send_otp(db, email, purpose=data.purpose, user_id=u.id)
+        audit(db, user_id=u.id, actor_email=email, action=f'{data.purpose}_otp_resent',
+              status='success', request=request, details={'otp_id': info['otp_id']})
+    return {'message': 'If the account exists, a new code has been sent.',
+            'expires_in_sec': OTP_TTL_MIN * 60}
+
+
+@router.post('/auth/forgot-password')
+def forgot_password(data: ForgotPasswordReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    rl_check('otp_send', email, 5, 3600,
+             detail='Too many reset requests. Try again later.')
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+    if u and u.is_active:
+        _create_and_send_otp(db, email, purpose='reset_password', user_id=u.id)
+        audit(db, user_id=u.id, actor_email=email, action='reset_password_otp_sent',
+              status='success', request=request)
+    # generic response — don't leak existence
+    return {'message': 'If the account exists, a reset code has been sent.',
+            'expires_in_sec': OTP_TTL_MIN * 60}
+
+
+@router.post('/auth/reset-password')
+def reset_password(data: ResetPasswordReq, request: Request, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    validate_domain(email)
+    if len(data.new_password) < 6:
+        raise HTTPException(400, 'Password must be at least 6 characters')
+    rl_check('reset_pw', email, 5, 3600,
+             detail='Too many password resets. Try again later.')
+
+    rec = _verify_otp(db, email, data.code, purpose='reset_password')
+    u = db.query(UserDB).filter(UserDB.email == email).first()
+    if not u:
+        raise HTTPException(404, 'User not found')
+
+    u.password_hash = hash_pw(data.new_password)
+    u.failed_attempts = 0
+    u.locked_until = None
+    # Revoke ALL active sessions on password reset (security best practice)
+    revoked = (db.query(SessionDB)
+                 .filter(SessionDB.user_id == u.id, SessionDB.is_active == True)  # noqa: E712
+                 .update({'is_active': False, 'revoked_at': datetime.now(timezone.utc)}))
+    db.commit()
+    audit(db, user_id=u.id, actor_email=email, action='password_reset',
+          status='success', request=request,
+          details={'sessions_revoked': revoked, 'otp_id': rec.id})
+    return {'message': 'Password reset successful. Please login again.'}
 
 
 @router.post('/auth/refresh')
@@ -637,8 +881,14 @@ def audit_log_list(u: UserDB = Depends(require_role('admin', 'super_admin')),
 
 @router.get('/')
 def root():
-    return {'message': 'HSI Enterprise Portal API v1.0', 'status': 'running',
-            'allowed_domain': ALLOWED_DOMAIN}
+    return {
+        'message': 'HSI Enterprise Portal API v1.0',
+        'status': 'running',
+        'allowed_domain': ALLOWED_DOMAIN,
+        'mfa_enabled': MFA_ENABLED,
+        'ses_configured': ses_is_configured(),
+        'redis_active': is_redis_active(),
+    }
 
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────
@@ -655,4 +905,6 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
-logger.info(f"HSI API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} rounds")
+logger.info(f"HSI API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} rounds · "
+            f"mfa={'on' if MFA_ENABLED else 'off'} · ses={'on' if ses_is_configured() else 'off (dev fallback)'} · "
+            f"redis={'on' if is_redis_active() else 'in-memory'}")

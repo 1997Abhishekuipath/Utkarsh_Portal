@@ -1,6 +1,5 @@
 # Production-only Python dependencies for HSI Enterprise Portal Backend
 # Excludes dev/test tools (pytest, black, mypy, flake8, etc.)
-# Excludes unused packages (boto3, pandas, numpy, motor, emergentintegrations, etc.)
 
 fastapi==0.110.1
 uvicorn[standard]==0.25.0
@@ -12,3 +11,5 @@ pydantic>=2.6.4
 email-validator>=2.2.0
 bcrypt==4.1.3
 python-multipart>=0.0.9
+boto3>=1.34.129
+redis>=5.0.0

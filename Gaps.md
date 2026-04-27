@@ -29,7 +29,26 @@
 
 ---
 
-## Sprint A — DONE (Feb 2026)
+## Sprint B — IN PROGRESS (Feb 2026)
+
+**Goal:** Email OTP MFA via AWS SES + Redis rate limiting + DB-level domain CHECK + Postgres 16.
+
+| Item | Status | Notes |
+|---|---|---|
+| AWS SES email service (boto3) — graceful fallback to log-only when no creds | 🟡 in progress | dev mode logs OTP to backend log so testing doesn't block on SES creds |
+| `MFA_ENABLED` env flag — toggles 2-step login | 🟡 in progress | OFF by default in dev; flip ON in prod `.env` |
+| `POST /auth/verify-otp` endpoint | 🟡 in progress | step 2 of 2-step login |
+| `POST /auth/resend-otp` endpoint | 🟡 in progress | rate-limited |
+| `POST /auth/forgot-password`, `POST /auth/reset-password` | 🟡 in progress | OTP-driven password reset |
+| Redis service in docker-compose | 🟡 in progress | optional in dev (in-memory fallback when REDIS_URL unset) |
+| Rate limiting (5 OTP/hr/email, 10 login/min/IP, 5 verify/min/email) | 🟡 in progress | Redis-backed with in-memory fallback |
+| DB-level domain CHECK constraint on `users.email` | 🟡 in progress | added to model + idempotent startup migration for existing DBs |
+| Postgres 15 → 16 in `docker-compose.yml` | 🟡 in progress | local dev pod stays on 15 (apt-installed) |
+| Frontend: 2-step login UX + OTP entry + forgot-password flow | 🟡 in progress | inline OTP on existing LoginPage |
+
+---
+
+
 
 | Item | Status | File / Endpoint |
 |---|---|---|

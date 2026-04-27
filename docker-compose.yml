@@ -6,7 +6,7 @@ services:
 
   # ── PostgreSQL Database ────────────────────────────────────────────────────
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: hsi_db
     environment:
       POSTGRES_DB:       ${DB_NAME:-hsi_portal}
@@ -22,6 +22,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    restart: unless-stopped
+
+  # ── Redis (rate limiting, session metadata) ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: hsi_redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - hsi_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # ── FastAPI Backend ────────────────────────────────────────────────────────
@@ -42,6 +58,11 @@ services:
       REFRESH_TTL_DAY:    ${REFRESH_TTL_DAY:-30}
       LOCKOUT_FAILS:      ${LOCKOUT_FAILS:-5}
       LOCKOUT_MIN:        ${LOCKOUT_MIN:-15}
+      MFA_ENABLED:        ${MFA_ENABLED:-true}
+      OTP_LENGTH:         ${OTP_LENGTH:-6}
+      OTP_TTL_MIN:        ${OTP_TTL_MIN:-10}
+      OTP_MAX_ATTEMPTS:   ${OTP_MAX_ATTEMPTS:-3}
+      REDIS_URL:          ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS:       ${CORS_ORIGINS:-*}
       AWS_REGION:         ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID:  ${AWS_ACCESS_KEY_ID:-}
@@ -51,6 +72,8 @@ services:
       SKIP_SEED_ON_IMPORT: "1"   # seeding happens in entrypoint.sh → seed.py
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - hsi_network
@@ -102,6 +125,8 @@ services:
 # ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
 
 # ── Networks ──────────────────────────────────────────────────────────────────

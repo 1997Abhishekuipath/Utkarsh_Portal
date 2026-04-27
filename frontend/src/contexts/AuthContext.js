@@ -28,9 +28,54 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const { data } = await axios.post(`${API}/auth/login`, { email, password });
+      // Two-step MFA: backend returns {requires_otp:true, ...} — caller handles UX.
+      if (data?.requires_otp) {
+        return { requires_otp: true, email: data.email, expires_in_sec: data.expires_in_sec };
+      }
       localStorage.setItem("hsi_token", data.access_token);
       if (data.refresh_token) localStorage.setItem("hsi_refresh", data.refresh_token);
       setUser(data.user);
+      return data;
+    } catch (e) {
+      throw new Error(formatErr(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const verifyOtp = async (email, code, purpose = "login") => {
+    try {
+      const { data } = await axios.post(`${API}/auth/verify-otp`, { email, code, purpose });
+      if (data?.access_token) {
+        localStorage.setItem("hsi_token", data.access_token);
+        if (data.refresh_token) localStorage.setItem("hsi_refresh", data.refresh_token);
+        setUser(data.user);
+      }
+      return data;
+    } catch (e) {
+      throw new Error(formatErr(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const resendOtp = async (email, purpose = "login") => {
+    try {
+      const { data } = await axios.post(`${API}/auth/resend-otp`, { email, purpose });
+      return data;
+    } catch (e) {
+      throw new Error(formatErr(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    try {
+      const { data } = await axios.post(`${API}/auth/forgot-password`, { email });
+      return data;
+    } catch (e) {
+      throw new Error(formatErr(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const resetPassword = async (email, code, new_password) => {
+    try {
+      const { data } = await axios.post(`${API}/auth/reset-password`, { email, code, new_password });
       return data;
     } catch (e) {
       throw new Error(formatErr(e.response?.data?.detail) || e.message);
@@ -69,7 +114,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, authHeader, API }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyOtp, resendOtp, forgotPassword, resetPassword, register, logout, authHeader, API }}>
       {children}
     </AuthContext.Provider>
   );

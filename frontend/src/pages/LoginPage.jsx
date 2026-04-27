@@ -3,6 +3,14 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Eye, EyeOff, Building2, LogIn, ShieldCheck, ArrowLeft, RefreshCw } from "lucide-react";
 
+const DEMO_ACCOUNTS = [
+  { role: "Super Admin", email: "superadmin@hitachi-systems.com", password: "SuperAdmin@123", color: "text-purple-700" },
+  { role: "Admin",       email: "admin@hitachi-systems.com",      password: "Admin@123",      color: "text-red-600"    },
+  { role: "Manager",     email: "manager@hitachi-systems.com",    password: "Manager@123",    color: "text-blue-600"   },
+  { role: "Employee",    email: "employee@hitachi-systems.com",   password: "Employee@123",   color: "text-emerald-600"},
+];
+const DEMO_OTP = "000000";
+
 export default function LoginPage() {
   const [stage, setStage]       = useState("creds"); // creds | otp
   const [email, setEmail]       = useState("");
@@ -13,6 +21,7 @@ export default function LoginPage() {
   const [info, setInfo]         = useState("");
   const [loading, setLoading]   = useState(false);
   const [resendIn, setResendIn] = useState(0); // countdown to next resend
+  const [isDemo, setIsDemo]     = useState(false);
   const { login, verifyOtp, resendOtp } = useAuth();
   const navigate = useNavigate();
   const otpInputRef = useRef(null);
@@ -35,8 +44,15 @@ export default function LoginPage() {
     try {
       const data = await login(email, password);
       if (data?.requires_otp) {
+        const isDemoEmail = DEMO_ACCOUNTS.some(a => a.email === email);
+        setIsDemo(isDemoEmail);
         setStage("otp");
-        setInfo("Enter the 6-digit code we just sent to your email.");
+        if (isDemoEmail) {
+          setCode(DEMO_OTP);
+          setInfo(`Demo account — OTP pre-filled as ${DEMO_OTP}`);
+        } else {
+          setInfo("Enter the 6-digit code we just sent to your email.");
+        }
         setResendIn(30);
       } else {
         navigate("/");
@@ -78,7 +94,7 @@ export default function LoginPage() {
   };
 
   const backToCreds = () => {
-    setStage("creds"); setError(""); setInfo(""); setCode("");
+    setStage("creds"); setError(""); setInfo(""); setCode(""); setIsDemo(false);
   };
 
   return (
@@ -212,6 +228,12 @@ export default function LoginPage() {
                     placeholder="••••••" required
                     className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#CC0000]/30 focus:border-[#CC0000] bg-white"
                   />
+                  {isDemo && (
+                    <p className="mt-2 text-center text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 px-3 flex items-center justify-center gap-1.5">
+                      <ShieldCheck size={13} />
+                      Demo account — OTP is always <span className="font-mono font-bold">{DEMO_OTP}</span>
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -244,15 +266,26 @@ export default function LoginPage() {
                 </div>
 
                 <div className="mt-4 bg-[#F8FAFC] rounded-lg p-3 border border-[#E2E8F0]">
-                  <p className="text-xs text-[#64748B] font-medium mb-1.5">Demo credentials:</p>
+                  <p className="text-xs text-[#64748B] font-medium mb-1.5 flex items-center gap-1">
+                    <ShieldCheck size={11} className="text-[#CC0000]" />
+                    Demo credentials — click to fill:
+                  </p>
                   <div className="space-y-1">
-                    {[["admin@hitachi-systems.com", "Admin@123", "Admin"], ["employee@hitachi-systems.com", "Employee@123", "Employee"], ["manager@hitachi-systems.com", "Manager@123", "Manager"]].map(([e, p, r]) => (
-                      <button key={r} onClick={() => { setEmail(e); setPassword(p); }}
-                        className="w-full text-left text-xs text-[#475569] hover:text-[#CC0000] py-0.5 transition-colors">
-                        <span className="font-medium">{r}:</span> {e} / {p}
+                    {DEMO_ACCOUNTS.map(({ role, email: e, password: p, color }) => (
+                      <button key={role} onClick={() => { setEmail(e); setPassword(p); }}
+                        className={`w-full text-left text-xs py-1 px-0.5 transition-colors hover:text-[#CC0000] ${color}`}>
+                        <span className="font-bold">{role}:</span>
+                        <span className="text-[#475569] ml-1">{e}</span>
+                        <span className="text-[#94A3B8] mx-1">/</span>
+                        <span className="font-mono text-[#475569]">{p}</span>
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-[#94A3B8] mt-2 pt-2 border-t border-[#E2E8F0] flex items-center gap-1">
+                    <span className="text-emerald-600">✓</span>
+                    Fixed OTP for all demo accounts:
+                    <span className="font-mono font-bold text-[#0F172A] tracking-widest ml-1">{DEMO_OTP}</span>
+                  </p>
                 </div>
               </>
             )}

@@ -75,6 +75,17 @@ MFA_ENABLED     = os.environ.get('MFA_ENABLED', 'false').lower() in ('1', 'true'
 OTP_LENGTH      = int(os.environ.get('OTP_LENGTH', '6'))
 OTP_TTL_MIN     = int(os.environ.get('OTP_TTL_MIN', '10'))
 OTP_MAX_ATTEMPTS = int(os.environ.get('OTP_MAX_ATTEMPTS', '3'))
+# Demo mode — fixed OTP accepted for seed accounts (set DEMO_OTP="" to disable)
+DEMO_OTP        = os.environ.get('DEMO_OTP', '000000')
+DEMO_EMAILS     = {
+    'superadmin@hitachi-systems.com',
+    'admin@hitachi-systems.com',
+    'manager@hitachi-systems.com',
+    'employee@hitachi-systems.com',
+    'priya@hitachi-systems.com',
+    'kiran@hitachi-systems.com',
+    'ananya@hitachi-systems.com',
+}
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -732,6 +743,12 @@ def _verify_otp(db: Session, email: str, code: str, purpose: str) -> OtpCodeDB:
              .first())
     if not rec or rec.expires_at <= now:
         raise HTTPException(400, 'OTP expired or not found. Request a new code.')
+    # ── Demo bypass: fixed OTP for seed accounts ──────────────────────────
+    if DEMO_OTP and email.lower() in DEMO_EMAILS and code == DEMO_OTP:
+        rec.is_used = True
+        db.commit()
+        return rec
+    # ── Normal flow ────────────────────────────────────────────────────────
     if rec.attempts >= OTP_MAX_ATTEMPTS:
         rec.is_used = True; db.commit()
         raise HTTPException(429, 'Too many attempts. Request a new code.')

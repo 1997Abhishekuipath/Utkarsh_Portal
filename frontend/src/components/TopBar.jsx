@@ -65,8 +65,8 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
   };
 
   return (
-    <div className="bg-[#CC0000] relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none"
+    <div className="bg-[#CC0000] relative">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden"
         style={{ backgroundImage: "radial-gradient(circle at 85% 50%, rgba(255,255,255,0.08) 0%, transparent 55%)" }} />
 
       {/* Brand row */}
@@ -107,7 +107,7 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
               </button>
               {notifOpen && (
                 <div role="menu" aria-label="Notifications menu"
-                  className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 w-96 z-50 max-h-[480px] flex flex-col">
+                  className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 w-80 sm:w-96 z-[200] max-h-[80vh] flex flex-col">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <span className="text-sm font-semibold text-gray-800">Notifications</span>
                     {unread > 0 && (
@@ -157,7 +157,7 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
                 <span className="text-white text-xs font-medium hidden sm:block">{firstName}</span>
               </button>
               {open && (
-                <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-lg border border-[#E2E8F0] w-56 z-50">
+                <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-lg border border-[#E2E8F0] w-56 z-[200] max-h-[80vh] overflow-y-auto">
                   <div className="px-4 py-3 border-b border-[#E2E8F0]">
                     <div className="text-sm font-semibold text-[#0F172A]">{user?.name}</div>
                     <div className="text-xs text-[#64748B] capitalize">{user?.role?.replace("_", " ")}</div>

@@ -94,7 +94,7 @@ export default function LoginPage() {
             </div>
             <div>
               <div className="text-white font-bold text-base tracking-wider">HITACHI SYSTEMS INDIA</div>
-              <div className="text-white/60 text-xs tracking-widest">HSI ENTERPRISE PLATFORM</div>
+              <div className="text-white/60 text-xs tracking-widest">HSI EMPLOYEE ENGAGEMENT PLATFORM</div>
             </div>
           </div>
           <h1 className="text-5xl font-bold text-white leading-tight mb-4">

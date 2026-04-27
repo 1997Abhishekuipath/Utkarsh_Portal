@@ -78,7 +78,7 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
             </div>
             <div>
               <div className="text-white font-semibold text-xs tracking-[0.12em]">HITACHI SYSTEMS INDIA</div>
-              <div className="text-white/50 text-[9px] tracking-widest">HSI ENTERPRISE PLATFORM</div>
+              <div className="text-white/50 text-[9px] tracking-widest">HSI EMPLOYEE ENGAGEMENT PLATFORM</div>
             </div>
           </Link>
 
@@ -150,11 +150,20 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
                 <span className="text-white text-xs font-medium hidden sm:block">{firstName}</span>
               </button>
               {open && (
-                <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-lg border border-[#E2E8F0] w-48 z-50">
+                <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-lg border border-[#E2E8F0] w-56 z-50">
                   <div className="px-4 py-3 border-b border-[#E2E8F0]">
                     <div className="text-sm font-semibold text-[#0F172A]">{user?.name}</div>
                     <div className="text-xs text-[#64748B] capitalize">{user?.role?.replace("_", " ")}</div>
+                    {user?.last_login_at && (
+                      <div className="text-[10px] text-[#94A3B8] mt-0.5">
+                        Last login: {new Date(user.last_login_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                      </div>
+                    )}
                   </div>
+                  <Link to="/profile" onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
+                    <span>👤</span><span>My Profile</span>
+                  </Link>
                   <Link to="/practices" onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
                     <span>📚</span><span>Best Practices</span>

@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
           </div>
           <div className="text-center">
             <div className="text-[#CC0000] font-bold text-sm tracking-wider">HITACHI SYSTEMS INDIA</div>
-            <div className="text-[#94A3B8] text-xs">HSI ENTERPRISE PLATFORM</div>
+            <div className="text-[#94A3B8] text-xs">HSI EMPLOYEE ENGAGEMENT PLATFORM</div>
           </div>
         </div>
 

@@ -45,14 +45,14 @@ export default function RegisterPage() {
           </div>
           <div className="text-center">
             <div className="text-[#CC0000] font-bold text-sm tracking-wider">HITACHI SYSTEMS INDIA</div>
-            <div className="text-[#94A3B8] text-xs">HSI ENTERPRISE PLATFORM</div>
+            <div className="text-[#94A3B8] text-xs">HSI EMPLOYEE ENGAGEMENT PLATFORM</div>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-8">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-[#0F172A]">Create Account</h2>
-            <p className="text-[#475569] text-sm mt-1">Join the HSI Enterprise Platform</p>
+            <p className="text-[#475569] text-sm mt-1">Join the HSI Employee Engagement Platform</p>
           </div>
 
           {error && (

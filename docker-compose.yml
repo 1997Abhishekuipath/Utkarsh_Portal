@@ -14,11 +14,23 @@ services:
       POSTGRES_DB:       ${DB_NAME:-hsi_portal}
       POSTGRES_USER:     ${DB_USER:-hsi_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-hsi_password123}
+      # Sprint F: WAL archiving for point-in-time recovery
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # DB initialisation: creates 4 app roles + app schema on first start
       # (scripts/init.sql is idempotent — safe to leave in place)
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/10_init.sql:ro
+      # Sprint F: WAL archive destination (daily full + hourly WAL)
+      - pg_wal_archive:/mnt/wal_archive
+    command: >
+      postgres
+        -c wal_level=replica
+        -c archive_mode=on
+        -c archive_command='test ! -f /mnt/wal_archive/%f && cp %p /mnt/wal_archive/%f'
+        -c archive_timeout=3600
+        -c max_wal_senders=3
+        -c wal_keep_size=128
     networks:
       - hsi_network
     healthcheck:
@@ -125,6 +137,11 @@ services:
       SES_SENDER_NAME:    ${SES_SENDER_NAME:-HSI Enterprise Platform}
       UVICORN_WORKERS:    ${UVICORN_WORKERS:-2}
       UVICORN_LOG_LEVEL:  ${UVICORN_LOG_LEVEL:-info}
+      # Sprint F: Sentry monitoring (leave blank to disable)
+      SENTRY_DSN:         ${SENTRY_DSN:-}
+      SENTRY_TRACES_RATE: ${SENTRY_TRACES_RATE:-0.1}
+      ENVIRONMENT:        ${ENVIRONMENT:-production}
+      APP_VERSION:        ${APP_VERSION:-sprint-f}
       SKIP_SEED_ON_IMPORT: "1"   # seeding happens in entrypoint.sh → seed.py
     depends_on:
       pgbouncer:
@@ -178,11 +195,36 @@ services:
       timeout: 10s
       retries: 3
 
+  # ── Sprint F: WAL Backup Service ───────────────────────────────────────────
+  # Runs daily full base-backup + continuous WAL archiving.
+  # Backups land in the pg_wal_archive volume (mount externally for off-site copy).
+  backup:
+    image: postgres:16-alpine
+    container_name: hsi_backup
+    environment:
+      PGHOST:     db
+      PGPORT:     "5432"
+      PGUSER:     ${DB_USER:-hsi_user}
+      PGPASSWORD: ${DB_PASSWORD:-hsi_password123}
+      PGDATABASE: ${DB_NAME:-hsi_portal}
+    volumes:
+      - pg_wal_archive:/backup
+      - ./scripts/backup.sh:/backup.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hsi_network
+    entrypoint: ["/bin/sh", "-c", "chmod +x /backup.sh && crond -f -l 8 & /backup.sh && wait"]
+    restart: unless-stopped
+
 # ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  pg_wal_archive:
     driver: local
 
 # ── Networks ──────────────────────────────────────────────────────────────────

@@ -102,7 +102,191 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "HSI Employee Engagement Platform — complete Sprint D (XP & Incentive Engine) and Sprint E (Notifications + Auto-triggers) from Gaps.md"
+user_problem_statement: "HSI Employee Engagement Platform — complete Sprint F (Security Hardening & Observability) from Gaps.md"
+
+backend:
+  - task: "Sprint F — Sentry monitoring integration"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "sentry-sdk[fastapi] installed, FastApiIntegration + StarletteIntegration + LoggingIntegration. Graceful degradation — skipped when SENTRY_DSN is empty."
+      - working: true
+        agent: "testing"
+        comment: "TESTED: Sentry integration working correctly. GET /api/ returns sentry_active=false (correct for dev environment). Health endpoint includes sentry status check."
+
+  - task: "Sprint F — Request-ID middleware"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "RequestIDMiddleware attaches X-Request-ID to every request/response. Sentry tag set per request."
+      - working: true
+        agent: "testing"
+        comment: "TESTED: X-Request-ID header present in all API responses. Verified with HEAD /api/ request."
+
+  - task: "Sprint F — Enhanced /api/health endpoint"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "GET /api/health returns database/redis/sentry/scheduler status with 200/503 based on overall health. Verified via curl."
+      - working: true
+        agent: "testing"
+        comment: "TESTED: Health endpoint working correctly. Returns status=healthy, database.status=ok, includes scheduler and sentry checks."
+
+  - task: "Sprint F — PATCH /api/users/me profile self-update"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "PATCH /api/users/me allows updating name, department, employee_id, date_of_birth."
+      - working: true
+        agent: "testing"
+        comment: "TESTED: Profile update endpoint working correctly. Successfully updated name='Admin Test' and department='IT'. Changes reflected in GET /api/auth/me."
+
+  - task: "Sprint F — App name updated to HSI Employee Engagement Platform"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "API response message updated: 'HSI Employee Engagement Platform API v2.0'. FastAPI title updated."
+      - working: true
+        agent: "testing"
+        comment: "TESTED: Root endpoint returns correct message 'HSI Employee Engagement Platform API v2.0' and sprint='F'."
+
+frontend:
+  - task: "Sprint F — Profile page (/profile)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ProfilePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Profile page with employee details, last_login_at display, XP summary card, security info, inline edit for name/dept/employee_id/dob."
+
+  - task: "Sprint F — last_login_at in TopBar user dropdown"
+    implemented: true
+    working: true
+    file: "frontend/src/components/TopBar.jsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "last_login_at shown in user dropdown below name/role."
+
+  - task: "Sprint F — App branding updated (HSI Employee Engagement Platform)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/TopBar.jsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "All frontend references updated from 'HSI ENTERPRISE PLATFORM' to 'HSI EMPLOYEE ENGAGEMENT PLATFORM'."
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Sprint F implemented.
+
+      Backend:
+      1. Sentry integration (sentry-sdk 2.58.0) — graceful, disabled when SENTRY_DSN not set.
+         sentry_active=false shown in /api/ root response.
+      2. RequestIDMiddleware — X-Request-ID echoed back in every response.
+      3. GET /api/health — returns DB, redis, sentry, scheduler health with 200/503.
+      4. PATCH /api/users/me — profile self-update endpoint.
+      5. App name: 'HSI Employee Engagement Platform API v2.0'
+      
+      Infrastructure:
+      1. nginx.conf — TLS 1.3 only, HSTS preload (2yr), CSP, Permissions-Policy,
+         Cross-Origin headers, X-Frame-Options DENY, dedicated auth rate limits.
+      2. docker-compose.yml — WAL archiving on PostgreSQL, backup service,
+         SENTRY_DSN env var added, pg_wal_archive volume added.
+      3. scripts/backup.sh — daily pg_basebackup + WAL archiving.
+      4. scripts/init.sql — SCRAM-SHA-256 note added.
+
+      Frontend:
+      1. ProfilePage.jsx — employee details, last_login_at, XP summary, security info, inline edit.
+      2. TopBar — last_login_at in user dropdown, Profile link added.
+      3. Branding updated everywhere.
+
+      Auth: admin@hitachi-systems.com / Admin@123 (OTP to backend stdout).
+      Test the endpoints in test_plan.current_focus.
+  - agent: "testing"
+    message: |
+      SPRINT F BACKEND TESTING COMPLETED - ALL TESTS PASSED ✅
+
+      COMPREHENSIVE API TESTING RESULTS (10/10 tests passed):
+      ✅ GET /api/ - Root endpoint metadata (message, sentry_active=false, sprint='F')
+      ✅ GET /api/health - Health endpoint (status=healthy, database.status=ok, scheduler+sentry checks)
+      ✅ X-Request-ID header presence - Request-ID middleware working
+      ✅ Authentication flow (login + OTP verification) - WORKING
+      ✅ PATCH /api/users/me - Profile update (name/department updates)
+      ✅ GET /api/auth/me - User profile (last_login_at populated, profile changes reflected)
+      ✅ GET /api/xp/summary - XP summary (all expected fields present)
+      ✅ GET /api/incentive/statement - Incentive statement (quarter format 2026-Q2 valid)
+      ✅ POST /api/admin/notifications/send - Send notification (successfully sent)
+      ✅ GET /api/notifications - List notifications (paginated response, test notification found)
+
+      SPRINT F FEATURES VERIFIED:
+      - Sentry monitoring integration: Gracefully disabled in dev (sentry_active=false)
+      - Request-ID middleware: X-Request-ID header present in all responses
+      - Enhanced health endpoint: Comprehensive health checks for all services
+      - Profile self-update: PATCH /api/users/me working correctly
+      - App branding: Updated to 'HSI Employee Engagement Platform API v2.0'
+
+      AUTHENTICATION FLOW TESTED:
+      - Login with admin@hitachi-systems.com / Admin@123
+      - OTP extraction from backend logs
+      - OTP verification with correct payload format (email, code, purpose)
+      - JWT token authentication for protected endpoints
+
+      ALL SPRINT F BACKEND FEATURES ARE WORKING CORRECTLY.
 
 backend:
   - task: "Sprint D — DB Models (BestPractice, Replication, XpLedger, IncentiveCalc, TechDay, Certification)"

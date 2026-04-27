@@ -1,33 +1,55 @@
 """
-HSI Enterprise Portal — Backend API
+HSI Employee Engagement Platform — Backend API
 Stack: FastAPI + SQLAlchemy 2.0 + PostgreSQL + JWT (access + refresh rotation)
 
-Sprint A — Auth foundation hardened:
-- bcrypt cost 12
-- Domain-locked registration (ALLOWED_DOMAIN env)
-- 4 roles: employee | manager | admin | super_admin
-- Pending admin approval before is_active=True
-- Account lockout: 5 failed attempts → 15 min
-- Sessions table with refresh-token rotation (15min access / 30d refresh)
-- Audit log for all auth + admin actions
-- otp_codes table (Sprint B will wire SMTP delivery)
+Sprint A — Auth foundation hardened
+Sprint B — Email OTP MFA via AWS SES + Redis rate limiting
+Sprint C — Pillars + EDM + CMS + WebSocket live-sync
+Sprint D — XP & Incentive Engine (best_practices, replications, xp_ledger, incentive_calculations, tech_days, certifications)
+Sprint E — Notifications + Auto-triggers (notifications, user_notifications, birthday XP scheduler)
+Sprint F — Security Hardening & Observability (Sentry, Request-ID, TLS, WAL backup, 4 DB roles)
 """
 from dotenv import load_dotenv
 load_dotenv()
 
+import os, logging, uuid, bcrypt, jwt, hashlib, secrets, random, re
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+# ── Sprint F: Sentry initialisation (graceful — skipped when SENTRY_DSN is empty) ──
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+
+_sentry_dsn = os.environ.get('SENTRY_DSN', '').strip()
+sentry_sdk.init(
+    dsn=_sentry_dsn or None,          # None → SDK silently disables itself
+    integrations=[
+        StarletteIntegration(transaction_style='endpoint',
+                             failed_request_status_codes={*range(500, 600)}),
+        FastApiIntegration(transaction_style='endpoint',
+                           failed_request_status_codes={*range(500, 600)}),
+        LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
+    ],
+    traces_sample_rate=float(os.environ.get('SENTRY_TRACES_RATE', '0.1')),
+    environment=os.environ.get('ENVIRONMENT', 'development'),
+    release=os.environ.get('APP_VERSION', 'sprint-f'),
+    send_default_pii=False,
+)
+
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from sqlalchemy import (
     create_engine, Column, String, DateTime, Date, Integer, BigInteger,
     Boolean, ForeignKey, CheckConstraint, Index, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
-import os, logging, uuid, bcrypt, jwt, hashlib, secrets, random, re
-from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from pathlib import Path
 
 from services.email import send_otp as ses_send_otp, is_configured as ses_is_configured
 from services.rate_limit import check_or_raise as rl_check, is_redis_active
@@ -851,7 +873,11 @@ def user_to_dict(u: UserDB) -> dict:
 
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
-app    = FastAPI(title='HSI Enterprise Portal API', version='1.0.0')
+app    = FastAPI(
+    title='HSI Employee Engagement Platform API',
+    version='2.0.0',
+    description='HSI Employee Engagement Platform — Sprint F (Hardened)',
+)
 router = APIRouter(prefix='/api')
 
 
@@ -1153,7 +1179,36 @@ def me(u: UserDB = Depends(get_current_user)):
     return user_to_dict(u)
 
 
-# ── Dashboard endpoints (mock data — Sprint C onwards will replace) ──────────
+# Sprint F: Profile self-update (name, department, employee_id, date_of_birth)
+class PatchMeReq(BaseModel):
+    name: Optional[str] = None
+    department: Optional[str] = None
+    employee_id: Optional[str] = None
+    date_of_birth: Optional[str] = None
+
+
+@router.patch('/users/me')
+def patch_me(body: PatchMeReq, u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    from datetime import date
+    if body.name is not None:
+        if len(body.name.strip()) < 2:
+            raise HTTPException(400, 'Name must be at least 2 characters')
+        u.name = body.name.strip()
+    if body.department is not None:
+        u.department = body.department.strip() or None
+    if body.employee_id is not None:
+        u.employee_id = body.employee_id.strip() or None
+    if body.date_of_birth is not None:
+        try:
+            u.date_of_birth = date.fromisoformat(body.date_of_birth) if body.date_of_birth else None
+        except ValueError:
+            raise HTTPException(400, 'Invalid date format (YYYY-MM-DD)')
+    db.commit()
+    db.refresh(u)
+    return user_to_dict(u)
+
+
+
 @router.get('/dashboard/stats')
 def stats(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     q = current_quarter()
@@ -1417,13 +1472,51 @@ def audit_log_list(u: UserDB = Depends(require_role('admin', 'super_admin')),
 @router.get('/')
 def root():
     return {
-        'message': 'HSI Enterprise Portal API v1.0',
+        'message': 'HSI Employee Engagement Platform API v2.0',
         'status': 'running',
         'allowed_domain': ALLOWED_DOMAIN,
         'mfa_enabled': MFA_ENABLED,
         'ses_configured': ses_is_configured(),
         'redis_active': is_redis_active(),
+        'sentry_active': bool(_sentry_dsn),
+        'sprint': 'F',
     }
+
+
+@router.get('/health')
+def health_check(db: Session = Depends(get_db)):
+    """Sprint F — detailed health check for load balancer / monitoring."""
+    checks = {}
+    overall = 'healthy'
+
+    # Database check
+    try:
+        db.execute(text('SELECT 1'))
+        checks['database'] = {'status': 'ok'}
+    except Exception as e:  # noqa: BLE001
+        checks['database'] = {'status': 'error', 'detail': str(e)}
+        overall = 'degraded'
+
+    # Redis check
+    checks['redis'] = {'status': 'ok' if is_redis_active() else 'unavailable (in-memory fallback)'}
+
+    # Sentry check
+    checks['sentry'] = {'status': 'configured' if _sentry_dsn else 'disabled (no SENTRY_DSN)'}
+
+    # Scheduler check
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        checks['scheduler'] = {'status': 'ok', 'jobs': len(_scheduler.get_jobs())}
+    except Exception:  # noqa: BLE001
+        checks['scheduler'] = {'status': 'not started'}
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={'status': overall, 'checks': checks,
+                 'version': '2.0.0', 'sprint': 'F',
+                 'timestamp': datetime.now(timezone.utc).isoformat()},
+        status_code=200 if overall == 'healthy' else 503,
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2366,14 +2459,30 @@ app.add_middleware(
     allow_credentials=False,
     allow_origins=cors_origins or ['*'],
     allow_methods=['*'],
-    allow_headers=['*'],
+    allow_headers=['*', 'X-Request-ID'],
+    expose_headers=['X-Request-ID'],
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+
+# ── Sprint F: Request-ID middleware ──────────────────────────────────────────
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Attaches a unique X-Request-ID to every request/response for tracing."""
+    async def dispatch(self, request: Request, call_next) -> Response:
+        rid = request.headers.get('X-Request-ID') or str(uuid.uuid4())
+        request.state.request_id = rid
+        sentry_sdk.set_tag('request_id', rid)
+        response = await call_next(request)
+        response.headers['X-Request-ID'] = rid
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s [%(name)s] %(message)s')
 logger = logging.getLogger(__name__)
-logger.info(f"HSI API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} rounds · "
-            f"mfa={'on' if MFA_ENABLED else 'off'} · ses={'on' if ses_is_configured() else 'off (dev fallback)'} · "
-            f"redis={'on' if is_redis_active() else 'in-memory'}")
+_sentry_status = f"dsn={'set' if _sentry_dsn else 'not set (disabled)'}"
+logger.info(f"HSI EEP API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} · "
+            f"mfa={'on' if MFA_ENABLED else 'off'} · ses={'on' if ses_is_configured() else 'off (dev)'} · "
+            f"redis={'on' if is_redis_active() else 'in-memory'} · sentry={_sentry_status}")
 
 
 # ── Sprint E — Birthday XP Scheduler ─────────────────────────────────────────

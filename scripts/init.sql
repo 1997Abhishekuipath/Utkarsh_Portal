@@ -2,11 +2,13 @@
 --  HSI Employee Engagement Platform — PostgreSQL Initialisation Script
 --  Runs once when the DB container is first created (docker-entrypoint-initdb.d)
 --  Reference: HSI-PRD-EEP-2026-v1.0 §3.1 and §3.2
+--  Sprint F: SCRAM-SHA-256 enforced via --auth-host=scram-sha-256 initdb flag.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- NOTE: PostgreSQL 16 with --auth-host=scram-sha-256 stores all passwords as
+-- SCRAM-SHA-256 hashes. Change the default passwords below before production.
+
 -- ── Create application roles (least-privilege per PRD §3.1) ──────────────────
--- These passwords are injected from docker-compose env vars at runtime.
--- The POSTGRES_PASSWORD env var (superuser) is set separately in docker-compose.
 
 DO $$
 BEGIN

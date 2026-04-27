@@ -11,6 +11,7 @@ import AdminPage from "./pages/AdminPage";
 import AdminContentPage from "./pages/AdminContentPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
+import ProfilePage from "./pages/ProfilePage";
 import PracticesPage from "./pages/PracticesPage";
 import MyActivityPage from "./pages/MyActivityPage";
 import NotificationsPage from "./pages/NotificationsPage";
@@ -23,7 +24,7 @@ const ProtectedRoute = ({ children, requiredRoles }) => {
       <div className="flex items-center justify-center h-screen bg-[#F1F5F9]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-[#CC0000] border-t-transparent rounded-full animate-spin" />
-          <span className="text-[#475569] text-sm font-medium">Loading HSI Portal...</span>
+          <span className="text-[#475569] text-sm font-medium">Loading HSI Employee Engagement Platform...</span>
         </div>
       </div>
     );
@@ -51,6 +52,8 @@ function App() {
           <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage /></ProtectedRoute>} />
           {/* Sprint E — Notifications */}
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+          {/* Sprint F — Profile */}
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPage /></ProtectedRoute>} />
           <Route path="/admin/content" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminContentPage /></ProtectedRoute>} />

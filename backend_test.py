@@ -1,86 +1,148 @@
 #!/usr/bin/env python3
 """
-HSI Employee Engagement Platform - Backend API Testing
-Tests Sprint D (XP & Incentive Engine) and Sprint E (Notifications + Auto-triggers)
+HSI Employee Engagement Platform - Sprint F Backend API Testing
+Tests Sprint F features: Sentry integration, Request-ID middleware, health endpoint, profile updates
 """
 
 import requests
 import json
+import time
 import re
-import subprocess
-import sys
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://docker-start-demo.preview.emergentagent.com/api"
+BASE_URL = "https://docker-start-demo.preview.emergentagent.com"
+API_BASE = f"{BASE_URL}/api"
+
+# Test credentials from /app/memory/test_credentials.md
 ADMIN_EMAIL = "admin@hitachi-systems.com"
 ADMIN_PASSWORD = "Admin@123"
 
-class HSIBackendTester:
+class SprintFTester:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({
-            'Content-Type': 'application/json',
-            'User-Agent': 'HSI-Backend-Tester/1.0'
-        })
         self.auth_token = None
         self.test_results = []
         
-    def log_result(self, test_name, success, message, response_data=None):
-        """Log test result"""
+    def log_result(self, test_name, success, details="", response_data=None):
+        """Log test result with details"""
         status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status} {test_name}: {message}")
-        self.test_results.append({
-            'test': test_name,
-            'success': success,
-            'message': message,
-            'response_data': response_data
-        })
-        
-    def get_otp_from_logs(self):
-        """Extract OTP from backend logs"""
+        result = {
+            "test": test_name,
+            "status": status,
+            "details": details,
+            "timestamp": datetime.now().isoformat()
+        }
+        if response_data:
+            result["response_data"] = response_data
+        self.test_results.append(result)
+        print(f"{status}: {test_name}")
+        if details:
+            print(f"   Details: {details}")
+        if not success and response_data:
+            print(f"   Response: {response_data}")
+        print()
+
+    def test_root_endpoint(self):
+        """Test 1: GET /api/ - verify Sprint F message and metadata"""
         try:
-            result = subprocess.run(
-                ['tail', '-n', '100', '/var/log/supervisor/backend.err.log'],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                # Look for OTP pattern in logs
-                otp_pattern = r'OTP.*?(\d{6})'
-                matches = re.findall(otp_pattern, result.stdout)
-                if matches:
-                    return matches[-1]  # Return the most recent OTP
-                    
-                # Alternative pattern
-                otp_pattern2 = r'(\d{6})'
-                lines = result.stdout.split('\n')
-                for line in reversed(lines):
-                    if 'otp' in line.lower() or 'code' in line.lower():
-                        matches = re.findall(otp_pattern2, line)
-                        if matches:
-                            return matches[-1]
-            return None
-        except Exception as e:
-            print(f"Error reading logs: {e}")
-            return None
-    
-    def test_basic_api(self):
-        """Test basic API connectivity"""
-        try:
-            response = self.session.get(f"{BASE_URL}/")
+            response = self.session.get(f"{API_BASE}/")
+            
             if response.status_code == 200:
                 data = response.json()
-                self.log_result("Basic API", True, f"API is running: {data.get('message', 'Unknown')}")
-                return True
+                
+                # Check message
+                expected_message = "HSI Employee Engagement Platform API v2.0"
+                if data.get("message") == expected_message:
+                    message_check = True
+                    message_details = f"Message correct: '{expected_message}'"
+                else:
+                    message_check = False
+                    message_details = f"Expected: '{expected_message}', Got: '{data.get('message')}'"
+                
+                # Check sentry_active
+                sentry_active = data.get("sentry_active")
+                if sentry_active == False:
+                    sentry_check = True
+                    sentry_details = "sentry_active=false (correct)"
+                else:
+                    sentry_check = False
+                    sentry_details = f"Expected sentry_active=false, Got: {sentry_active}"
+                
+                # Check sprint
+                sprint = data.get("sprint")
+                if sprint == "F":
+                    sprint_check = True
+                    sprint_details = "sprint='F' (correct)"
+                else:
+                    sprint_check = False
+                    sprint_details = f"Expected sprint='F', Got: '{sprint}'"
+                
+                overall_success = message_check and sentry_check and sprint_check
+                details = f"{message_details}; {sentry_details}; {sprint_details}"
+                
+                self.log_result("GET /api/ - Root endpoint metadata", overall_success, details, data)
             else:
-                self.log_result("Basic API", False, f"API returned status {response.status_code}")
-                return False
+                self.log_result("GET /api/ - Root endpoint metadata", False, 
+                              f"HTTP {response.status_code}", response.text)
+                
         except Exception as e:
-            self.log_result("Basic API", False, f"Connection error: {str(e)}")
-            return False
-    
-    def test_authentication(self):
-        """Test authentication flow with MFA"""
+            self.log_result("GET /api/ - Root endpoint metadata", False, f"Exception: {str(e)}")
+
+    def test_health_endpoint(self):
+        """Test 2: GET /api/health - verify health checks"""
+        try:
+            response = self.session.get(f"{API_BASE}/health")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check overall status
+                status = data.get("status")
+                status_check = status == "healthy"
+                
+                # Check checks object
+                checks = data.get("checks", {})
+                
+                # Check database status
+                db_status = checks.get("database", {}).get("status")
+                db_check = db_status == "ok"
+                
+                # Check for scheduler
+                scheduler_exists = "scheduler" in checks
+                
+                # Check for sentry
+                sentry_exists = "sentry" in checks
+                
+                overall_success = status_check and db_check and scheduler_exists and sentry_exists
+                details = f"status={status}; database.status={db_status}; scheduler_present={scheduler_exists}; sentry_present={sentry_exists}"
+                
+                self.log_result("GET /api/health - Health endpoint", overall_success, details, data)
+            else:
+                self.log_result("GET /api/health - Health endpoint", False, 
+                              f"HTTP {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_result("GET /api/health - Health endpoint", False, f"Exception: {str(e)}")
+
+    def test_request_id_header(self):
+        """Test 3: Check X-Request-ID header presence"""
+        try:
+            response = self.session.head(f"{API_BASE}/")
+            
+            request_id = response.headers.get("X-Request-ID")
+            if request_id:
+                self.log_result("X-Request-ID header presence", True, 
+                              f"X-Request-ID header present: {request_id}")
+            else:
+                self.log_result("X-Request-ID header presence", False, 
+                              "X-Request-ID header missing", dict(response.headers))
+                
+        except Exception as e:
+            self.log_result("X-Request-ID header presence", False, f"Exception: {str(e)}")
+
+    def authenticate(self):
+        """Authenticate and get OTP from logs"""
         try:
             # Step 1: Login
             login_data = {
@@ -88,272 +150,324 @@ class HSIBackendTester:
                 "password": ADMIN_PASSWORD
             }
             
-            response = self.session.post(f"{BASE_URL}/auth/login", json=login_data)
+            response = self.session.post(f"{API_BASE}/auth/login", json=login_data)
             
-            if response.status_code != 200:
-                self.log_result("Auth Login", False, f"Login failed with status {response.status_code}: {response.text}")
-                return False
+            if response.status_code == 200:
+                print("✅ Login successful, checking for OTP in backend logs...")
                 
-            login_result = response.json()
-            
-            if not login_result.get('requires_otp'):
-                self.log_result("Auth Login", False, "Expected OTP to be required but it wasn't")
-                return False
-                
-            self.log_result("Auth Login", True, "Login successful, MFA required")
-            
-            # Step 2: Get OTP from logs
-            print("Waiting for OTP in backend logs...")
-            otp = self.get_otp_from_logs()
-            
-            if not otp:
-                self.log_result("Auth OTP", False, "Could not extract OTP from backend logs")
-                return False
-                
-            print(f"Found OTP: {otp}")
-            
-            # Step 3: Verify OTP
-            otp_data = {
-                "email": ADMIN_EMAIL,
-                "code": otp,
-                "purpose": "login"
-            }
-            response = self.session.post(f"{BASE_URL}/auth/verify-otp", json=otp_data)
-            
-            if response.status_code != 200:
-                self.log_result("Auth OTP", False, f"OTP verification failed with status {response.status_code}: {response.text}")
-                return False
-                
-            otp_result = response.json()
-            self.auth_token = otp_result.get('access_token')
-            
-            if self.auth_token:
-                self.session.headers.update({'Authorization': f'Bearer {self.auth_token}'})
-                self.log_result("Auth OTP", True, "OTP verification successful, authenticated")
-                return True
-            else:
-                self.log_result("Auth OTP", False, "No access token received")
-                return False
-                
-        except Exception as e:
-            self.log_result("Authentication", False, f"Authentication error: {str(e)}")
-            return False
-    
-    def test_dashboard_endpoints(self):
-        """Test dashboard endpoints for live data"""
-        endpoints = [
-            ("/dashboard/stats", "Dashboard Stats"),
-            ("/dashboard/score", "Dashboard Score"),
-            ("/dashboard/leaderboard", "Dashboard Leaderboard")
-        ]
-        
-        for endpoint, name in endpoints:
-            try:
-                response = self.session.get(f"{BASE_URL}{endpoint}")
-                if response.status_code == 200:
-                    data = response.json()
-                    # Check if it's live data (not mock)
-                    if isinstance(data, dict):
-                        if name == "Dashboard Leaderboard" and len(data.get('leaders', [])) == 0:
-                            self.log_result(name, True, "Leaderboard returned empty list (expected with fresh data)")
-                        elif data:
-                            self.log_result(name, True, f"Returned live data with {len(data)} fields")
+                # Step 2: Get OTP from backend logs
+                import subprocess
+                try:
+                    # Check backend logs for OTP
+                    log_result = subprocess.run(
+                        ["tail", "-n", "100", "/var/log/supervisor/backend.err.log"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    
+                    log_content = log_result.stdout
+                    
+                    # Look for OTP patterns
+                    otp_patterns = [
+                        r'OTP.*?(\d{6})',
+                        r'otp.*?(\d{6})',
+                        r'(\d{6})',  # Any 6-digit number
+                    ]
+                    
+                    otp_code = None
+                    for pattern in otp_patterns:
+                        matches = re.findall(pattern, log_content, re.IGNORECASE)
+                        if matches:
+                            # Get the last match (most recent)
+                            otp_code = matches[-1]
+                            break
+                    
+                    if otp_code:
+                        print(f"✅ Found OTP in logs: {otp_code}")
+                        
+                        # Step 3: Verify OTP
+                        otp_data = {
+                            "email": ADMIN_EMAIL,
+                            "code": otp_code,
+                            "purpose": "login"
+                        }
+                        otp_response = self.session.post(f"{API_BASE}/auth/verify-otp", json=otp_data)
+                        
+                        if otp_response.status_code == 200:
+                            otp_result = otp_response.json()
+                            self.auth_token = otp_result.get("access_token")
+                            if self.auth_token:
+                                self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
+                                self.log_result("Authentication flow", True, 
+                                              f"Successfully authenticated with OTP: {otp_code}")
+                                return True
+                            else:
+                                self.log_result("Authentication flow", False, 
+                                              "No access_token in OTP response", otp_result)
                         else:
-                            self.log_result(name, False, "Returned empty or invalid data")
-                    elif isinstance(data, list):
-                        self.log_result(name, True, f"Returned list with {len(data)} items")
+                            self.log_result("Authentication flow", False, 
+                                          f"OTP verification failed: HTTP {otp_response.status_code}", 
+                                          otp_response.text)
                     else:
-                        self.log_result(name, False, f"Returned non-dict/non-list data: {type(data)} - {data}")
-                else:
-                    self.log_result(name, False, f"Status {response.status_code}: {response.text}")
-            except Exception as e:
-                self.log_result(name, False, f"Error: {str(e)}")
-    
-    def test_xp_endpoints(self):
-        """Test XP-related endpoints"""
-        endpoints = [
-            ("/xp/summary", "XP Summary"),
-            ("/xp/ledger", "XP Ledger")
-        ]
-        
-        for endpoint, name in endpoints:
-            try:
-                response = self.session.get(f"{BASE_URL}{endpoint}")
-                if response.status_code == 200:
-                    data = response.json()
-                    self.log_result(name, True, f"XP data retrieved successfully")
-                else:
-                    self.log_result(name, False, f"Status {response.status_code}: {response.text}")
-            except Exception as e:
-                self.log_result(name, False, f"Error: {str(e)}")
-    
-    def test_practices_endpoints(self):
-        """Test best practices endpoints"""
-        try:
-            # Test GET approved practices
-            response = self.session.get(f"{BASE_URL}/practices?status=approved")
-            if response.status_code == 200:
-                data = response.json()
-                self.log_result("Practices List", True, f"Retrieved {len(data.get('practices', []))} approved practices")
+                        self.log_result("Authentication flow", False, 
+                                      "No OTP found in backend logs", log_content[-500:])
+                        
+                except subprocess.TimeoutExpired:
+                    self.log_result("Authentication flow", False, "Timeout reading backend logs")
+                except Exception as log_e:
+                    self.log_result("Authentication flow", False, f"Error reading logs: {str(log_e)}")
+                    
             else:
-                self.log_result("Practices List", False, f"Status {response.status_code}: {response.text}")
+                self.log_result("Authentication flow", False, 
+                              f"Login failed: HTTP {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_result("Authentication flow", False, f"Exception: {str(e)}")
             
-            # Test POST new practice
-            practice_data = {
-                "title": "Test Practice",
-                "summary": "Test summary for automated testing",
-                "difficulty": "medium",
-                "pillar": "customer",
-                "art_tag": "retain",
-                "status": "pending"
+        return False
+
+    def test_profile_update(self):
+        """Test 4: PATCH /api/users/me - profile self-update"""
+        if not self.auth_token:
+            self.log_result("PATCH /api/users/me - Profile update", False, "Not authenticated")
+            return
+            
+        try:
+            # Test profile update
+            update_data = {
+                "name": "Admin Test",
+                "department": "IT"
             }
             
-            response = self.session.post(f"{BASE_URL}/practices", json=practice_data)
-            if response.status_code in [200, 201]:
-                data = response.json()
-                self.log_result("Practice Submit", True, f"Practice submitted successfully with ID: {data.get('id', 'unknown')}")
-            else:
-                self.log_result("Practice Submit", False, f"Status {response.status_code}: {response.text}")
-                
-        except Exception as e:
-            self.log_result("Practices", False, f"Error: {str(e)}")
-    
-    def test_notifications_endpoints(self):
-        """Test notification endpoints"""
-        try:
-            # Test unread count - need to check if endpoint exists
-            response = self.session.get(f"{BASE_URL}/notifications/unread-count")
-            if response.status_code == 200:
-                data = response.json()
-                self.log_result("Notifications Unread Count", True, f"Unread count: {data.get('count', 0)}")
-            elif response.status_code == 404:
-                self.log_result("Notifications Unread Count", False, "Endpoint /notifications/unread-count not found - may need to be implemented")
-            else:
-                self.log_result("Notifications Unread Count", False, f"Status {response.status_code}: {response.text}")
+            response = self.session.patch(f"{API_BASE}/users/me", json=update_data)
             
-            # Test notifications list
-            response = self.session.get(f"{BASE_URL}/notifications")
             if response.status_code == 200:
                 data = response.json()
-                self.log_result("Notifications List", True, f"Retrieved {data.get('total', 0)} notifications")
+                
+                # Check if update was successful
+                name_updated = data.get("name") == "Admin Test"
+                dept_updated = data.get("department") == "IT"
+                
+                success = name_updated and dept_updated
+                details = f"name_updated={name_updated}, department_updated={dept_updated}"
+                
+                self.log_result("PATCH /api/users/me - Profile update", success, details, data)
             else:
-                self.log_result("Notifications List", False, f"Status {response.status_code}: {response.text}")
+                self.log_result("PATCH /api/users/me - Profile update", False, 
+                              f"HTTP {response.status_code}", response.text)
                 
         except Exception as e:
-            self.log_result("Notifications", False, f"Error: {str(e)}")
-    
-    def test_admin_endpoints(self):
-        """Test admin endpoints"""
+            self.log_result("PATCH /api/users/me - Profile update", False, f"Exception: {str(e)}")
+
+    def test_auth_me(self):
+        """Test 5: GET /api/auth/me - verify last_login_at and profile updates"""
+        if not self.auth_token:
+            self.log_result("GET /api/auth/me - User profile", False, "Not authenticated")
+            return
+            
         try:
-            # Test admin notification send
+            response = self.session.get(f"{API_BASE}/auth/me")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check last_login_at
+                last_login = data.get("last_login_at")
+                last_login_check = last_login is not None
+                
+                # Check profile updates
+                name = data.get("name")
+                department = data.get("department")
+                name_check = name == "Admin Test"
+                dept_check = department == "IT"
+                
+                success = last_login_check and name_check and dept_check
+                details = f"last_login_at_present={last_login_check}, name='{name}', department='{department}'"
+                
+                self.log_result("GET /api/auth/me - User profile", success, details, data)
+            else:
+                self.log_result("GET /api/auth/me - User profile", False, 
+                              f"HTTP {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_result("GET /api/auth/me - User profile", False, f"Exception: {str(e)}")
+
+    def test_xp_summary(self):
+        """Test 6: GET /api/xp/summary - verify XP summary response"""
+        if not self.auth_token:
+            self.log_result("GET /api/xp/summary - XP summary", False, "Not authenticated")
+            return
+            
+        try:
+            response = self.session.get(f"{API_BASE}/xp/summary")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check for actual fields returned by the API
+                expected_fields = ["total_xp", "quarter", "quarter_xp", "rank", "total_users", "breakdown", "level"]
+                fields_present = all(field in data for field in expected_fields)
+                
+                details = f"Expected fields present: {fields_present}, Fields: {list(data.keys())}"
+                
+                self.log_result("GET /api/xp/summary - XP summary", fields_present, details, data)
+            else:
+                self.log_result("GET /api/xp/summary - XP summary", False, 
+                              f"HTTP {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_result("GET /api/xp/summary - XP summary", False, f"Exception: {str(e)}")
+
+    def test_incentive_statement(self):
+        """Test 7: GET /api/incentive/statement - verify quarter format"""
+        if not self.auth_token:
+            self.log_result("GET /api/incentive/statement - Incentive statement", False, "Not authenticated")
+            return
+            
+        try:
+            response = self.session.get(f"{API_BASE}/incentive/statement")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check quarter format
+                quarter = data.get("quarter")
+                quarter_pattern = r"(2025|2026)-Q[1-4]"
+                quarter_valid = quarter and re.match(quarter_pattern, quarter)
+                
+                details = f"Quarter format valid: {quarter_valid}, Quarter: '{quarter}'"
+                
+                self.log_result("GET /api/incentive/statement - Incentive statement", 
+                              quarter_valid, details, data)
+            else:
+                self.log_result("GET /api/incentive/statement - Incentive statement", False, 
+                              f"HTTP {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_result("GET /api/incentive/statement - Incentive statement", False, f"Exception: {str(e)}")
+
+    def test_admin_notification_send(self):
+        """Test 8: POST /api/admin/notifications/send - send test notification"""
+        if not self.auth_token:
+            self.log_result("POST /api/admin/notifications/send - Send notification", False, "Not authenticated")
+            return
+            
+        try:
             notification_data = {
-                "title": "Test Notification",
-                "body": "Test message from automated testing",
+                "title": "Sprint F Test",
+                "body": "Security hardening complete",
                 "category": "announcement",
                 "target_type": "all"
             }
             
-            response = self.session.post(f"{BASE_URL}/admin/notifications/send", json=notification_data)
-            if response.status_code in [200, 201]:
-                data = response.json()
-                self.log_result("Admin Notification Send", True, f"Notification sent successfully: {data.get('notification_id', 'unknown')}")
-            else:
-                self.log_result("Admin Notification Send", False, f"Status {response.status_code}: {response.text}")
+            response = self.session.post(f"{API_BASE}/admin/notifications/send", json=notification_data)
             
-            # Test admin analytics
-            response = self.session.get(f"{BASE_URL}/admin/analytics/summary")
             if response.status_code == 200:
                 data = response.json()
-                self.log_result("Admin Analytics", True, f"Analytics data retrieved with {len(data)} metrics")
+                
+                # Check response - API returns 'sent' field, not 'success'
+                success = data.get("sent", False)
+                details = f"Notification sent successfully: {success}"
+                
+                self.log_result("POST /api/admin/notifications/send - Send notification", 
+                              success, details, data)
             else:
-                self.log_result("Admin Analytics", False, f"Status {response.status_code}: {response.text}")
+                self.log_result("POST /api/admin/notifications/send - Send notification", False, 
+                              f"HTTP {response.status_code}", response.text)
                 
         except Exception as e:
-            self.log_result("Admin Endpoints", False, f"Error: {str(e)}")
-    
-    def test_tech_days_certifications(self):
-        """Test tech days and certifications endpoints"""
+            self.log_result("POST /api/admin/notifications/send - Send notification", False, f"Exception: {str(e)}")
+
+    def test_notifications_list(self):
+        """Test 9: GET /api/notifications - verify user can see notifications"""
+        if not self.auth_token:
+            self.log_result("GET /api/notifications - List notifications", False, "Not authenticated")
+            return
+            
         try:
-            # Test tech days submission
-            tech_day_data = {
-                "title": "Test Tech Day",
-                "description": "Automated test tech day submission",
-                "conducted_on": "2024-01-15",
-                "attendee_count": 10,
-                "client_name": "Test Client"
-            }
+            response = self.session.get(f"{API_BASE}/notifications")
             
-            response = self.session.post(f"{BASE_URL}/tech-days", json=tech_day_data)
-            if response.status_code in [200, 201]:
+            if response.status_code == 200:
                 data = response.json()
-                self.log_result("Tech Days Submit", True, f"Tech day submitted with ID: {data.get('id', 'unknown')}")
+                
+                # Check if it's a paginated response with 'items' array
+                has_items = "items" in data and isinstance(data["items"], list)
+                has_total = "total" in data
+                items = data.get("items", []) if has_items else []
+                
+                # Look for our test notification
+                test_notification_found = False
+                if has_items:
+                    for notification in items:
+                        if (notification.get("title") == "Sprint F Test" and 
+                            notification.get("body") == "Security hardening complete"):
+                            test_notification_found = True
+                            break
+                
+                success = has_items and has_total and test_notification_found
+                details = f"Has items: {has_items}, Has total: {has_total}, Test notification found: {test_notification_found}"
+                
+                self.log_result("GET /api/notifications - List notifications", success, details, 
+                              {"total": data.get("total", 0), "items_count": len(items), "sample": items[:2] if items else []})
             else:
-                self.log_result("Tech Days Submit", False, f"Status {response.status_code}: {response.text}")
-            
-            # Test certifications submission
-            cert_data = {
-                "cert_name": "Test Certification",
-                "provider": "Test Provider",
-                "issued_on": "2024-01-15",
-                "expires_on": "2025-01-15",
-                "evidence_url": "https://example.com/cert.pdf"
-            }
-            
-            response = self.session.post(f"{BASE_URL}/certifications", json=cert_data)
-            if response.status_code in [200, 201]:
-                data = response.json()
-                self.log_result("Certifications Submit", True, f"Certification submitted with ID: {data.get('id', 'unknown')}")
-            else:
-                self.log_result("Certifications Submit", False, f"Status {response.status_code}: {response.text}")
+                self.log_result("GET /api/notifications - List notifications", False, 
+                              f"HTTP {response.status_code}", response.text)
                 
         except Exception as e:
-            self.log_result("Tech Days/Certifications", False, f"Error: {str(e)}")
-    
+            self.log_result("GET /api/notifications - List notifications", False, f"Exception: {str(e)}")
+
     def run_all_tests(self):
-        """Run all backend tests"""
-        print("=" * 60)
-        print("HSI Employee Engagement Platform - Backend API Tests")
-        print("=" * 60)
+        """Run all Sprint F tests"""
+        print("=" * 80)
+        print("HSI Employee Engagement Platform - Sprint F Backend API Testing")
+        print("=" * 80)
+        print(f"Backend URL: {API_BASE}")
+        print(f"Test Credentials: {ADMIN_EMAIL}")
+        print("=" * 80)
+        print()
         
-        # Test basic connectivity
-        if not self.test_basic_api():
-            print("❌ Basic API test failed. Stopping tests.")
-            return False
+        # Test 1-3: No auth required
+        self.test_root_endpoint()
+        self.test_health_endpoint()
+        self.test_request_id_header()
         
-        # Test authentication
-        if not self.test_authentication():
-            print("❌ Authentication failed. Stopping tests.")
-            return False
-        
-        # Run all other tests
-        self.test_dashboard_endpoints()
-        self.test_xp_endpoints()
-        self.test_practices_endpoints()
-        self.test_notifications_endpoints()
-        self.test_admin_endpoints()
-        self.test_tech_days_certifications()
+        # Authenticate
+        if self.authenticate():
+            # Test 4-9: Auth required
+            self.test_profile_update()
+            self.test_auth_me()
+            self.test_xp_summary()
+            self.test_incentive_statement()
+            self.test_admin_notification_send()
+            self.test_notifications_list()
+        else:
+            print("❌ Authentication failed - skipping authenticated tests")
         
         # Summary
-        print("\n" + "=" * 60)
+        print("=" * 80)
         print("TEST SUMMARY")
-        print("=" * 60)
+        print("=" * 80)
         
-        passed = sum(1 for result in self.test_results if result['success'])
+        passed = sum(1 for result in self.test_results if "✅ PASS" in result["status"])
+        failed = sum(1 for result in self.test_results if "❌ FAIL" in result["status"])
         total = len(self.test_results)
         
         print(f"Total Tests: {total}")
         print(f"Passed: {passed}")
-        print(f"Failed: {total - passed}")
+        print(f"Failed: {failed}")
+        print(f"Success Rate: {(passed/total*100):.1f}%" if total > 0 else "0%")
+        print()
         
-        if total - passed > 0:
-            print("\nFAILED TESTS:")
+        if failed > 0:
+            print("FAILED TESTS:")
             for result in self.test_results:
-                if not result['success']:
-                    print(f"  ❌ {result['test']}: {result['message']}")
+                if "❌ FAIL" in result["status"]:
+                    print(f"  - {result['test']}: {result['details']}")
         
-        return passed == total
+        return passed, failed, total
 
 if __name__ == "__main__":
-    tester = HSIBackendTester()
-    success = tester.run_all_tests()
-    sys.exit(0 if success else 1)
+    tester = SprintFTester()
+    passed, failed, total = tester.run_all_tests()
+    
+    # Exit with appropriate code
+    exit(0 if failed == 0 else 1)

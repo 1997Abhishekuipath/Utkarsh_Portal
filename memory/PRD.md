@@ -4,7 +4,7 @@
 HSI Employee Engagement Platform — converging current Enterprise Portal toward the full PRD scope (`HSI-PRD-EEP-2026-v1.0`). V1 is **web-only**; mobile apps deferred to backlog.
 
 **Date Started:** 2025-02
-**Status:** Sprint A complete (Auth foundation hardened) · NPS/CSAT + Action Intelligence preserved as deep-dives under Customer pillar
+**Status:** Sprint B complete (MFA + Redis rate-limit + DB-level domain CHECK + Postgres 16 in compose) · NPS/CSAT + Action Intelligence preserved as deep-dives under Customer pillar
 
 ---
 
@@ -61,9 +61,9 @@ HSI Employee Engagement Platform — converging current Enterprise Portal toward
 
 ## Implemented (Phase 1 + Sprint A)
 
-### Auth (Sprint A — hardened Feb 2026)
+### Auth (Sprint A — hardened Feb 2026 · Sprint B — MFA & rate limiting)
 - [x] User registration with role selection (employee | manager only — admins seeded)
-- [x] **Domain restriction** at API layer (`@hitachi-systems.com` only)
+- [x] **Domain restriction** at API + **DB-level CHECK constraint** (`@hitachi-systems.com` only)
 - [x] **Pending-approval flow** — `is_active=False` until admin approves
 - [x] **bcrypt cost 12**
 - [x] **JWT access (15 min) + refresh (30 d) with one-time-use rotation**
@@ -74,7 +74,13 @@ HSI Employee Engagement Platform — converging current Enterprise Portal toward
 - [x] `/auth/check-email`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`
 - [x] `/admin/users/pending`, `/admin/users/:id/approve`, `/admin/users/:id/reject`
 - [x] `/admin/audit-log`
-- [x] `otp_codes` table created (SMTP wiring in Sprint B)
+- [x] **Email OTP MFA** (Sprint B) — 6-digit, SHA-256 hashed, 10 min TTL, 3 attempts max
+- [x] **AWS SES integration** with branded HTML email + dev log-fallback
+- [x] **`/auth/verify-otp`, `/auth/resend-otp`** endpoints
+- [x] **`/auth/forgot-password`, `/auth/reset-password`** — OTP-driven, revokes all sessions
+- [x] **Rate limiting** — 10 login/min/IP, 5 OTP/hr/email, 1 resend/30s, 5 verify/min, 5 reset/hr (Redis-backed with in-memory fallback)
+- [x] **Redis service** in docker-compose (redis:7-alpine, AOF, 256MB LRU)
+- [x] Frontend: 2-step login UX (inline OTP step, masked email, resend countdown), forgot-password page
 
 ### User Model Expansion
 - [x] Added: `display_name`, `employee_id`, `practice`, `designation`, `art_tags[]`, `avatar_url`, `phone`, `date_of_birth`, `date_joined`, `is_verified`, `approved_by`, `approved_at`, `last_login_at`, `failed_attempts`, `locked_until`
@@ -93,8 +99,9 @@ HSI Employee Engagement Platform — converging current Enterprise Portal toward
 - [ ] **Sprint C will replace** with PRD home (EDM carousel + quotes + activity grid + 4 pillar cards)
 
 ### Pages
-- [x] /login — HSI branding
+- [x] /login — HSI branding · **2-step OTP login** when MFA enabled
 - [x] /register — pending-approval flow + domain hint
+- [x] /forgot-password — OTP-driven password reset
 - [x] / — current Enterprise Portal home (will be replaced Sprint C)
 - [x] /apps/:appId — 9 placeholder pages
 - [x] /apps/nps-csat — NPS & CSAT (kept; will fold under Customer pillar)
@@ -140,16 +147,9 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 
 ---
 
-## Prioritized Backlog (post-Sprint A)
+## Prioritized Backlog (post Sprint B)
 
-### P0 — Sprint B (next)
-- [ ] AWS SES integration → email OTP MFA flow (login + register + reset)
-  - `POST /auth/verify-otp`, `POST /auth/forgot-password`, `POST /auth/reset-password`
-- [ ] Add Redis service to docker-compose for rate limiting (5 OTP/hour/email, 10 login/min/IP)
-- [ ] DB-level domain CHECK constraint
-- [ ] Postgres image bump 15 → 16
-
-### P1 — Sprint C (Pillars + EDM + CMS)
+### P0 — Sprint C (Pillars + EDM + CMS + WebSocket)
 - [ ] `pillars`, `pillar_icons`, `edm_slides`, `motivational_quotes` tables + admin CRUD
 - [ ] Replace home `/` with PRD home: EDM carousel + quotes + activity grid + 4 pillar cards
 - [ ] 4 pillar pages (Customer / Innovator / Employee / Shareholder) — hero + sub-EDM + 6-col icon grid
@@ -168,7 +168,7 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - [ ] 7 auto-triggers + birthday `pg_cron` (50 XP)
 
 ### P2 — Sprint F (Hardening + Ops)
-- [ ] pgBouncer + Redis production hardening
+- [ ] pgBouncer transaction pooling
 - [ ] Sentry + WAL backups
 - [ ] TLS 1.3 only
 - [ ] WCAG 2.1 AA audit

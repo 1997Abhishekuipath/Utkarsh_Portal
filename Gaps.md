@@ -16,35 +16,47 @@
 
 ---
 
-## TL;DR — Severity Snapshot (post Sprint A)
+## TL;DR — Severity Snapshot (post Sprint B)
 
-| Severity | Open | Closed in Sprint A | Theme |
+| Severity | Open | Closed (A+B) | Theme |
 |---|---|---|---|
-| 🔴 Critical | 5 (was 7) | **2 closed** | Auth foundation hardened (lockout, audit, sessions, super_admin, pending approval). Remaining: XP engine, content/CMS, EDM, pillar nav, replications. |
-| 🟠 High | 7 (was 9) | **2 closed** | bcrypt 12, audit log, sessions, refresh rotation, pending-approval, super_admin, domain check (API) — **closed**. Remaining: pgBouncer, Redis, MinIO, WebSocket, DB-level role isolation. |
+| 🔴 Critical | 4 (was 7) | **3 closed** | Auth foundation hardened + MFA + rate limiting. Remaining: pillar nav/EDM, XP engine, content/CMS, replications, WebSocket. |
+| 🟠 High | 5 (was 9) | **4 closed** | bcrypt 12, audit log, sessions, refresh rotation, pending approval, super_admin, domain CHECK (DB+API), MFA, rate limiting, password reset — **closed**. Remaining: pgBouncer, MinIO, WebSocket, 4 DB roles, Sentry. |
 | 🟡 Medium | 11 | 0 | Content management surfaces — Sprint C/D. |
 | 🟢 Low | 5 | 0 | Branding, doc control. |
 
-**Progress: Phase 1 + Phase 0 + thin slice of Phase 2 → ~12% of total PRD scope. Up from ~5–8% before Sprint A.**
+**Progress: ~18% of total PRD scope** (was ~12% post Sprint A, ~5–8% baseline).
 
 ---
 
-## Sprint B — IN PROGRESS (Feb 2026)
+## Sprint B — DONE (Feb 2026)
 
 **Goal:** Email OTP MFA via AWS SES + Redis rate limiting + DB-level domain CHECK + Postgres 16.
 
 | Item | Status | Notes |
 |---|---|---|
-| AWS SES email service (boto3) — graceful fallback to log-only when no creds | 🟡 in progress | dev mode logs OTP to backend log so testing doesn't block on SES creds |
-| `MFA_ENABLED` env flag — toggles 2-step login | 🟡 in progress | OFF by default in dev; flip ON in prod `.env` |
-| `POST /auth/verify-otp` endpoint | 🟡 in progress | step 2 of 2-step login |
-| `POST /auth/resend-otp` endpoint | 🟡 in progress | rate-limited |
-| `POST /auth/forgot-password`, `POST /auth/reset-password` | 🟡 in progress | OTP-driven password reset |
-| Redis service in docker-compose | 🟡 in progress | optional in dev (in-memory fallback when REDIS_URL unset) |
-| Rate limiting (5 OTP/hr/email, 10 login/min/IP, 5 verify/min/email) | 🟡 in progress | Redis-backed with in-memory fallback |
-| DB-level domain CHECK constraint on `users.email` | 🟡 in progress | added to model + idempotent startup migration for existing DBs |
-| Postgres 15 → 16 in `docker-compose.yml` | 🟡 in progress | local dev pod stays on 15 (apt-installed) |
-| Frontend: 2-step login UX + OTP entry + forgot-password flow | 🟡 in progress | inline OTP on existing LoginPage |
+| AWS SES email service (boto3) — graceful fallback to log-only when no creds | ✅ | `services/email.py`. Dev mode logs OTP to backend log (`[email][DEV-FALLBACK]…`); switches to real SES when AWS creds present. Branded HTML + plain-text email body. |
+| `MFA_ENABLED` env flag — toggles 2-step login | ✅ | OFF by default in dev; ON in current pod for prod-parity testing. |
+| `POST /auth/verify-otp` endpoint | ✅ | Hash-compares (SHA-256) the 6-digit code; max 3 attempts before invalidate. |
+| `POST /auth/resend-otp` endpoint | ✅ | Rate-limited (5/hr, 1/30s). Generic response — never leaks user existence. |
+| `POST /auth/forgot-password`, `POST /auth/reset-password` | ✅ | OTP-driven reset; **revokes all active sessions** on success (sec best practice). |
+| Redis service in docker-compose | ✅ | redis:7-alpine, AOF persistence, 256MB LRU. Optional in dev (in-memory fallback). |
+| Rate limiting — 10 login/min/IP, 5 OTP/hr/email, 1 resend/30s, 5 verify/min/email, 5 reset/hr/email | ✅ | `services/rate_limit.py` (Redis-backed; in-memory fallback). All limits verified with curl. |
+| DB-level domain CHECK constraint on `users.email` | ✅ | `chk_user_email_domain CHECK (email ILIKE '%@hitachi-systems.com')` — verified rejects gmail at INSERT. Idempotent startup migration adds it to existing DBs. |
+| Postgres 15 → 16 in `docker-compose.yml` | ✅ | `image: postgres:16-alpine`. Local dev pod stays on apt-installed 15. |
+| Frontend: 2-step login UX + OTP entry + forgot-password flow | ✅ | `LoginPage.jsx` rewritten with inline OTP step (back button, resend countdown, masked email); new `ForgotPasswordPage.jsx`; `App.js` adds `/forgot-password` route; `super_admin` allowed alongside `admin` in `ProtectedRoute`. |
+
+### Verified end-to-end (curl)
+- ✅ MFA OFF → login returns access + refresh tokens directly (backward compat)
+- ✅ MFA ON → step 1 returns `{requires_otp: true, otp_id, expires_in_sec}`, no tokens issued
+- ✅ OTP visible in dev log; verify-otp returns tokens
+- ✅ Wrong OTP returns remaining attempts (3 → 2 → 1 → 0); 4th wrong attempt invalidates the OTP
+- ✅ Resend OTP rate-limited: 1 per 30s (HTTP 429)
+- ✅ Forgot-password issues reset OTP; reset-password sets new pw + revokes all sessions
+- ✅ Login with old password fails after reset (401)
+- ✅ DB-level domain CHECK rejects `bad@gmail.com` at INSERT (psql: "violates check constraint")
+- ✅ Login rate-limit: 11th request in a minute returns HTTP 429
+- ✅ Frontend OTP UI renders after creds submission; back button returns to creds; forgot-password link visible
 
 ---
 
@@ -84,13 +96,10 @@
 
 | # | PRD Requirement | Current State | Sprint |
 |---|---|---|---|
-| 1 | **Email OTP MFA** — 6-digit, SHA-256 hashed, 10 min TTL, max 3 attempts, sent via SMTP | `otp_codes` table ready, SMTP not wired | **B** — AWS SES integration + `/auth/verify-otp` endpoint |
-| 2 | **Domain CHECK constraint at DB level** (PRD §4.4) | API-only check today | **B** — add CHECK constraint via Alembic migration |
-| 3 | **Redis** for rate limiting (5 OTP/hr/email, 10 login/min/IP) | None | **B** |
-| 4 | **EDM Carousel + Pillar nav + 4 pillar pages** (Customer/Innovator/Employee/Shareholder) | Generic dashboard | **C** |
-| 5 | **XP ledger + ART multipliers + INR incentive engine + quarterly payout** | Single `xp_points` integer | **D** |
-| 6 | **Best Practices / Replications / Tech Days / Certifications** workflows | None | **D** |
-| 7 | **WebSocket live admin→app sync** (≤5s after Publish All) | None | **C** |
+| 1 | **EDM Carousel + Pillar nav + 4 pillar pages** (Customer/Innovator/Employee/Shareholder) | Generic dashboard | **C** |
+| 2 | **XP ledger + ART multipliers + INR incentive engine + quarterly payout** | Single `xp_points` integer | **D** |
+| 3 | **Best Practices / Replications / Tech Days / Certifications** workflows | None | **D** |
+| 4 | **WebSocket live admin→app sync** (≤5s after Publish All) | None | **C** |
 
 ## Still Open — High (P1)
 

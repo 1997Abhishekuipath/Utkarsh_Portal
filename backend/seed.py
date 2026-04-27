@@ -145,48 +145,63 @@ def _seed_content(engine):
         pillar_ids[slug] = p.id
 
     icons_seed = [
-        # Customer pillar — includes the existing NPS/CSAT and Action Intelligence pages
-        ('customer', 'NPS & CSAT',           'Real-time satisfaction & loyalty', 'Smile',       '/apps/nps-csat',         'hot', 1),
-        ('customer', 'Action Intelligence',  'Meetings, follow-ups, surveys',     'Target',      '/apps/survey-builder',   'new', 2),
-        ('customer', 'Service Desk',         'Tickets, SLAs, escalations',        'Headphones',  '/apps/service-desk',     None,  3),
-        ('customer', 'Help Desk',            'Internal support requests',         'LifeBuoy',    '/apps/help-desk',        None,  4),
-        ('customer', 'CRM',                  'Pipeline, leads, accounts',         'Contact',     '/apps/crm',              None,  5),
-        ('customer', 'Customer Voice',       'Feedback collection',               'MessageSquare','/apps/customer-voice',  None,  6),
+        # (slug, name, desc, icon, route, badge, pos, card_color, stat_value, stat_label, action_tag, action_stat)
+        # Customer pillar
+        ('customer', 'NPS & CSAT',          'Real-time satisfaction & loyalty scores. Track NPS trends across accounts.',              'Smile',         '/apps/nps-csat',       'hot', 1, '#CC0000',  '4.8',  'SCORE',     'INSIGHTS', '12 NEW'),
+        ('customer', 'Action Intelligence', 'Meetings, follow-ups, and smart survey builder for customer insights.',                   'Target',        '/apps/survey-builder', 'new', 2, '#B91C1C',  '24',   'MEETINGS',  'TRACK',    '8 OPEN'),
+        ('customer', 'Service Desk',        'Tickets, SLAs, and escalation tracking for customer-facing issues.',                     'Headphones',    '/apps/service-desk',   None,  3, '#9A1515',  '18',   'TICKETS',   'SUPPORT',  '3 URGENT'),
+        ('customer', 'Help Desk',           'Internal support requests and knowledge-base articles.',                                  'LifeBuoy',      '/apps/help-desk',      None,  4, '#7F1D1D',  '42',   'REQUESTS',  'HELP',     '7 PENDING'),
+        ('customer', 'CRM',                 'Manage prospects, track opportunities, and attach base publications to deals.',           'Contact',       '/apps/crm',            None,  5, '#1E40AF',  '142',  'ACCOUNTS',  'VIEW',     '40 OPEN'),
+        ('customer', 'Customer Voice',      'Feedback collection portal with sentiment analysis and action tracking.',                 'MessageSquare', '/apps/customer-voice', None,  6, '#0F766E',  '89%',  'POSITIVE',  'VOICE',    '5 TODAY'),
 
         # Innovator pillar
-        ('innovator','Best Practices',       'Proven solutions to replicate',     'Award',       '/apps/best-practices',   'hot', 1),
-        ('innovator','Tech Days',            'Showcase innovations & demos',      'Presentation','/apps/tech-days',        None,  2),
-        ('innovator','Replications',         'Adopt practices in your account',   'CopyCheck',   '/apps/replications',     None,  3),
-        ('innovator','Certifications',       'Skills & knowledge badges',         'GraduationCap','/apps/certifications', None,  4),
-        ('innovator','Workflow Automation',  'No-code workflows',                 'Zap',         '/apps/workflow',         'new', 5),
-        ('innovator','Innovation Hub',       'Ideas board',                       'Sparkles',    '/apps/innovation',       None,  6),
+        ('innovator','Best Practices',      'Submit, discover and implement best practices. Get XP incentives across all pillars.',   'Award',         '/apps/best-practices', 'hot', 1, '#CC0000',  '80',   'PRACTICES', 'KNOWLEDGE','20 HOURS'),
+        ('innovator','Tech Days',           'Plan and execute tech day events. Track attendance, earn XP incentives.',                 'Presentation',  '/apps/tech-days',      None,  2, '#059669',  '8',    'EVENTS',    'TRACK',    '8 DAYS'),
+        ('innovator','Replications',        'Adopt proven practices in your account. Track PO value and earn replication XP.',        'CopyCheck',     '/apps/replications',   None,  3, '#F97316',  '24',   'PROJECTS',  'REPLICATE','12 ACTIVE'),
+        ('innovator','Certifications',      'Skills & knowledge certification badges. Earn XP for each verified certification.',      'GraduationCap', '/apps/certifications', None,  4, '#7C3AED',  '156',  'BADGES',    'EARN',     '14 ACTIVE'),
+        ('innovator','Workflow Automation', 'Set-up workflow approvals, change management, ITSM tickets and escalation visibility.',  'Zap',           '/apps/workflow',       'new', 5, '#6D28D9',  '18',   'WORKFLOWS', 'AUTOMATE', '25 TASKS'),
+        ('innovator','Innovation Hub',      'Ideas board for cross-team innovation challenges and concept submissions.',               'Sparkles',      '/apps/innovation',     None,  6, '#2563EB',  '36',   'IDEAS',     'IDEATE',   '9 NEW'),
 
         # Employee pillar
-        ('employee', 'Productivity Hub',     'Tasks, focus, & time tracking',     'CheckSquare', '/apps/productivity',     None,  1),
-        ('employee', 'Learning & Development','Courses & paths',                  'BookOpen',    '/apps/learning',         None,  2),
-        ('employee', 'Visitor Management',   'Pre-register & host visitors',      'UserCheck',   '/apps/visitors',         None,  3),
-        ('employee', 'Email Campaigns',      'Internal comms & campaigns',        'Mail',        '/apps/campaigns',        None,  4),
-        ('employee', 'Recognition',          'Kudos, awards, leaderboard',        'Trophy',      '/apps/recognition',      'hot', 5),
-        ('employee', 'Wellness',             'Health & well-being',               'Activity',    '/apps/wellness',         None,  6),
+        ('employee', 'Productivity Hub',     'Team task management, sprint boards, time tracking, resource planning and projects.',   'CheckSquare',   '/apps/productivity',   None,  1, '#F97316',  '24',   'PROJECTS',  'OPERATIONS','42 OPEN'),
+        ('employee', 'Learning & Development','200-level mentoring, course development, HSI certifications and L&D portfolio.',       'BookOpen',      '/apps/learning',       None,  2, '#CC0000',  '45',   'COURSES',   'ENROLL',   '12 ACTIVE'),
+        ('employee', 'Visitor Management',   'Manage employee visitor registration, manage badges printing key, track visitor data.', 'UserCheck',     '/apps/visitors',       None,  3, '#059669',  '34',   'VISITORS',  'TRACK',    '6 TODAY'),
+        ('employee', 'Email Campaigns',      'Internal comms & campaigns with audience targeting and delivery analytics.',            'Mail',          '/apps/campaigns',      None,  4, '#2563EB',  '12',   'CAMPAIGNS', 'SEND',     '3 LIVE'),
+        ('employee', 'Recognition',          'Kudos, awards, peer recognition, and employee leaderboard with XP milestones.',        'Trophy',        '/apps/recognition',    'hot', 5, '#D97706',  '312',  'AWARDS',    'KUDOS',    '8 TODAY'),
+        ('employee', 'Wellness',             'Health & well-being programs, fitness challenges, and mental wellness resources.',      'Activity',      '/apps/wellness',       None,  6, '#0D9488',  '78%',  'ENGAGED',   'WELLNESS', '5 ACTIVE'),
 
         # Shareholder pillar
-        ('shareholder','Analytics',          'Cross-org KPIs',                    'BarChart3',   '/apps/analytics',        None,  1),
-        ('shareholder','Access Rights',      'Permissions & reviews',             'Shield',      '/apps/access',           None,  2),
-        ('shareholder','Finance Reports',    'Revenue, margin, payout',           'IndianRupee', '/apps/finance',          None,  3),
-        ('shareholder','Compliance',         'Audits & policies',                 'FileCheck',   '/apps/compliance',       None,  4),
-        ('shareholder','Risk Register',      'Operational risks',                 'AlertTriangle','/apps/risk',            None,  5),
-        ('shareholder','Board Pack',         'Quarterly reports',                 'FileText',    '/apps/board',            'new', 6),
+        ('shareholder','Analytics',          'Cross-org analytics, XP trends, incentive reporting and KPI dashboards.',              'BarChart3',     '/apps/analytics',      None,  1, '#2563EB',  '28',   'REPORTS',   'INSIGHTS', '3 NEW'),
+        ('shareholder','Access Rights',      'Manage enterprise system access, role-based and employee-level access controls.',      'Shield',        '/apps/access',         None,  2, '#374151',  '1.2K', 'ACCOUNTS',  'SECURITY', '12 ALERTS'),
+        ('shareholder','Finance Reports',    'Revenue, margin, payout and quarterly financial reporting dashboards.',                 'IndianRupee',   '/apps/finance',        None,  3, '#059669',  '₹2cr', 'REVENUE',   'FINANCE',  'Q1 2026'),
+        ('shareholder','Compliance',         'Audits, policy tracking, regulatory compliance status and due-date monitoring.',       'FileCheck',     '/apps/compliance',     None,  4, '#1F2937',  '98%',  'COMPLIANT', 'AUDIT',    '2 DUE'),
+        ('shareholder','Risk Register',      'Operational risk tracking, impact scoring, and mitigation action management.',         'AlertTriangle', '/apps/risk',           None,  5, '#DC2626',  '15',   'RISKS',     'REVIEW',   '3 HIGH'),
+        ('shareholder','Board Pack',         'Quarterly board reports with executive summaries and KPI performance snapshots.',       'FileText',      '/apps/board',          'new', 6, '#1E40AF',  'Q1',   'REPORT',    'BOARD',    'LATEST'),
     ]
-    for slug, name, desc, icon, route, badge, pos in icons_seed:
+    for slug, name, desc, icon, route, badge, pos, card_color, sv, sl, at, ast in icons_seed:
         pid = pillar_ids.get(slug)
         if not pid:
             continue
-        if db.query(PillarIconDB).filter(PillarIconDB.pillar_id == pid,
-                                         PillarIconDB.name == name).first():
+        existing = db.query(PillarIconDB).filter(PillarIconDB.pillar_id == pid,
+                                                  PillarIconDB.name == name).first()
+        if existing:
+            # Update card design fields if missing
+            if not existing.card_color or existing.card_color == '#CC0000':
+                existing.card_color = card_color
+            if not existing.stat_value:
+                existing.stat_value = sv
+            if not existing.stat_label:
+                existing.stat_label = sl
+            if not existing.action_tag:
+                existing.action_tag = at
+            if not existing.action_stat:
+                existing.action_stat = ast
             continue
         db.add(PillarIconDB(id=str(uuid.uuid4()), pillar_id=pid, name=name,
                             description=desc, lucide_icon=icon, route=route,
-                            badge=badge, position=pos, is_published=True))
+                            badge=badge, position=pos, is_published=True,
+                            card_color=card_color, stat_value=sv, stat_label=sl,
+                            action_tag=at, action_stat=ast))
 
     edm_seed = [
         ('home', 'Q1 Incentives Paid',

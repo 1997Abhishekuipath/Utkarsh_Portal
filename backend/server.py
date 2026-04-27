@@ -216,6 +216,12 @@ class PillarIconDB(Base):
     badge         = Column(String, nullable=True)              # 'hot' | 'new' | null
     position      = Column(Integer, default=0)
     is_published  = Column(Boolean, default=True)
+    # Card design fields (Sprint H)
+    card_color    = Column(String, default='#CC0000')          # banner background colour
+    stat_value    = Column(String, nullable=True)              # e.g. "80", "1.2K", "4.8"
+    stat_label    = Column(String, nullable=True)              # e.g. "PRACTICES", "EVENTS"
+    action_tag    = Column(String, nullable=True)              # e.g. "KNOWLEDGE", "TRACK"
+    action_stat   = Column(String, nullable=True)              # e.g. "20 HOURS", "8 DAYS"
     updated_at    = Column(DateTime(timezone=True),
                            default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -521,7 +527,41 @@ def _ensure_bp_attachments_column():
 _ensure_bp_attachments_column()
 
 
-# ── Pydantic Schemas ──────────────────────────────────────────────────────────
+# ── Sprint H — add card design columns to pillar_icons if missing ────────────
+def _ensure_pillar_icon_card_columns():
+    sql = """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillar_icons' AND column_name='card_color') THEN
+            ALTER TABLE pillar_icons ADD COLUMN card_color VARCHAR DEFAULT '#CC0000';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillar_icons' AND column_name='stat_value') THEN
+            ALTER TABLE pillar_icons ADD COLUMN stat_value VARCHAR;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillar_icons' AND column_name='stat_label') THEN
+            ALTER TABLE pillar_icons ADD COLUMN stat_label VARCHAR;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillar_icons' AND column_name='action_tag') THEN
+            ALTER TABLE pillar_icons ADD COLUMN action_tag VARCHAR;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillar_icons' AND column_name='action_stat') THEN
+            ALTER TABLE pillar_icons ADD COLUMN action_stat VARCHAR;
+        END IF;
+    END$$;
+    """
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(sql)
+    except Exception as e:                                          # noqa: BLE001
+        logging.warning(f"[migration] pillar_icons card columns skipped: {e}")
+
+
+_ensure_pillar_icon_card_columns()
 class RegisterReq(BaseModel):
     name: str
     email: EmailStr
@@ -591,6 +631,11 @@ class PillarIconUpsertReq(BaseModel):
     badge: Optional[str] = None         # 'hot' | 'new' | None
     position: int = 0
     is_published: bool = True
+    card_color: str = '#CC0000'
+    stat_value: Optional[str] = None
+    stat_label: Optional[str] = None
+    action_tag: Optional[str] = None
+    action_stat: Optional[str] = None
 
 
 class EdmSlideUpsertReq(BaseModel):
@@ -1677,6 +1722,11 @@ def _icon_to_dict(i: PillarIconDB) -> dict:
         'description': i.description, 'lucide_icon': i.lucide_icon,
         'route': i.route, 'badge': i.badge, 'position': i.position,
         'is_published': i.is_published,
+        'card_color': getattr(i, 'card_color', '#CC0000') or '#CC0000',
+        'stat_value': getattr(i, 'stat_value', None),
+        'stat_label': getattr(i, 'stat_label', None),
+        'action_tag': getattr(i, 'action_tag', None),
+        'action_stat': getattr(i, 'action_stat', None),
     }
 
 

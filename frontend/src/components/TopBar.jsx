@@ -180,10 +180,16 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
                     <span>⭐</span><span>My XP & Activity</span>
                   </Link>
                   {isAdmin && (
-                    <Link to="/admin" data-testid="admin-panel-link" onClick={() => setOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
-                      <Settings size={15} /><span>Admin Panel</span>
-                    </Link>
+                    <>
+                      <Link to="/admin" data-testid="admin-panel-link" onClick={() => setOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
+                        <Settings size={15} /><span>Admin Panel</span>
+                      </Link>
+                      <Link to="/admin/console" onClick={() => setOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
+                        <span className="text-sm">🖥️</span><span>Admin Console</span>
+                      </Link>
+                    </>
                   )}
                   <button data-testid="logout-button" onClick={doLogout}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-b-lg">

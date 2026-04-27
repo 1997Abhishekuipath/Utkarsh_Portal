@@ -70,6 +70,10 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/admin/console" data-testid="admin-console-link"
+              className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70">
+              <span aria-hidden="true">🖥️</span><span>Console</span>
+            </Link>
             <Link to="/admin/content" data-testid="admin-content-link"
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70">
               <ChevronDown size={13} className="rotate-[-90deg]" aria-hidden="true" /><span>Content</span>
@@ -126,8 +130,9 @@ export default function AdminPage() {
         </div>
 
         {/* Quick Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {[
+            { to: "/admin/console", emoji: "🖥️", label: "Admin Console", desc: "Dark CMS — EDM, icons, pillars, quotes" },
             { to: "/admin/approvals", emoji: "✅", label: "Approval Queue", desc: "Practices, Tech Days, Replications, Certs" },
             { to: "/admin/analytics", emoji: "📊", label: "Analytics", desc: "XP trends, contributors, revenue" },
             { to: "/admin/payout", emoji: "💰", label: "Payroll Payout", desc: "Export CSV/PDF, approve payroll" },

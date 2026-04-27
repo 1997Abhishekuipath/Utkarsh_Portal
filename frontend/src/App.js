@@ -19,6 +19,7 @@ import PracticesPage from "./pages/PracticesPage";
 import MyActivityPage from "./pages/MyActivityPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AdminNotificationsPage from "./pages/AdminNotificationsPage";
+import AdminConsolePage from "./pages/AdminConsolePage";
 
 const ProtectedRoute = ({ children, requiredRoles }) => {
   const { user, loading } = useAuth();
@@ -70,6 +71,8 @@ function App() {
           <Route path="/admin/payout" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPayoutPage /></ProtectedRoute>} />
           {/* Approvals (Practices / Replications / Tech Days / Certs) */}
           <Route path="/admin/approvals" element={<ProtectedRoute requiredRoles={["admin", "super_admin", "manager"]}><AdminApprovalsPage /></ProtectedRoute>} />
+          {/* Full Admin Console (dark CMS) */}
+          <Route path="/admin/console" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminConsolePage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </div>

@@ -238,6 +238,8 @@ class EdmSlideDB(Base):
     gradient_to    = Column(String, default='#7A0000')
     image_url      = Column(String, nullable=True)
     link           = Column(String, nullable=True)
+    tag            = Column(String, nullable=True)
+    tag_color      = Column(String, nullable=True, default='#D4A84A')
     position       = Column(Integer, default=0)
     starts_at      = Column(DateTime(timezone=True), nullable=True)
     ends_at        = Column(DateTime(timezone=True), nullable=True)
@@ -259,6 +261,7 @@ class QuoteDB(Base):
     id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     text         = Column(String, nullable=False)
     author       = Column(String, nullable=True)
+    source       = Column(String, nullable=True)   # alias / attribution line
     position     = Column(Integer, default=0)
     is_published = Column(Boolean, default=True)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -562,6 +565,37 @@ def _ensure_pillar_icon_card_columns():
 
 
 _ensure_pillar_icon_card_columns()
+
+
+# ── Sprint H — add tag/tag_color to edm_slides + source to quotes ────────────
+def _ensure_edm_tag_columns():
+    sql = """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='edm_slides' AND column_name='tag') THEN
+            ALTER TABLE edm_slides ADD COLUMN tag VARCHAR;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='edm_slides' AND column_name='tag_color') THEN
+            ALTER TABLE edm_slides ADD COLUMN tag_color VARCHAR DEFAULT '#D4A84A';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='motivational_quotes' AND column_name='source') THEN
+            ALTER TABLE motivational_quotes ADD COLUMN source VARCHAR;
+        END IF;
+    END$$;
+    """
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(sql)
+    except Exception as e:                                          # noqa: BLE001
+        logging.warning(f"[migration] edm/quote columns skipped: {e}")
+
+
+_ensure_edm_tag_columns()
+
+
 class RegisterReq(BaseModel):
     name: str
     email: EmailStr
@@ -700,10 +734,8 @@ class EdmSlidePatchReq(BaseModel):
 class QuoteUpsertReq(BaseModel):
     text: str
     author: Optional[str] = None
-    source: Optional[str] = None
-    scope: Optional[str] = 'all'
+    source: Optional[str] = None        # attribution line shown in UI
     position: int = 0
-    is_active: bool = True
     is_published: bool = True
 
 
@@ -712,9 +744,7 @@ class QuotePatchReq(BaseModel):
     text: Optional[str] = None
     author: Optional[str] = None
     source: Optional[str] = None
-    scope: Optional[str] = None
     position: Optional[int] = None
-    is_active: Optional[bool] = None
     is_published: Optional[bool] = None
 
 
@@ -1795,7 +1825,10 @@ def _edm_to_dict(s: EdmSlideDB) -> dict:
     return {
         'id': s.id, 'scope': s.scope, 'title': s.title, 'subtitle': s.subtitle,
         'gradient_from': s.gradient_from, 'gradient_to': s.gradient_to,
-        'image_url': s.image_url, 'link': s.link, 'position': s.position,
+        'image_url': s.image_url, 'link': s.link,
+        'tag': getattr(s, 'tag', None),
+        'tag_color': getattr(s, 'tag_color', '#D4A84A') or '#D4A84A',
+        'position': s.position,
         'starts_at': s.starts_at.isoformat() if s.starts_at else None,
         'ends_at':   s.ends_at.isoformat()   if s.ends_at   else None,
         'is_published': s.is_published,
@@ -1803,8 +1836,12 @@ def _edm_to_dict(s: EdmSlideDB) -> dict:
 
 
 def _quote_to_dict(q: QuoteDB) -> dict:
-    return {'id': q.id, 'text': q.text, 'author': q.author,
-            'position': q.position, 'is_published': q.is_published}
+    return {
+        'id': q.id, 'text': q.text,
+        'author': q.author,
+        'source': getattr(q, 'source', None) or q.author or '',
+        'position': q.position, 'is_published': q.is_published,
+    }
 
 
 def _published_edm(db: Session, scope: str) -> List[dict]:
@@ -1942,7 +1979,10 @@ def admin_icon_update(icon_id: str, body: PillarIconPatchReq, request: Request,
     if not i:
         raise HTTPException(404, 'Icon not found')
     for k, v in body.dict(exclude_unset=True).items():
-        if v is not None:
+        # Allow explicit None/empty to clear badge; only skip if field wasn't sent
+        if k == 'badge':
+            setattr(i, k, v or None)   # "" → None (clears badge)
+        elif v is not None:
             setattr(i, k, v)
     db.commit(); db.refresh(i)
     audit(db, user_id=u.id, actor_email=u.email, action='icon_update',
@@ -1976,7 +2016,14 @@ def admin_edm_create(body: EdmSlideUpsertReq, request: Request,
                      u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
     if body.scope not in ('home', 'customer', 'innovator', 'employee', 'shareholder'):
         raise HTTPException(400, 'Invalid scope')
-    s = EdmSlideDB(id=str(uuid.uuid4()), **body.dict())
+    s = EdmSlideDB(
+        id=str(uuid.uuid4()),
+        scope=body.scope, title=body.title, subtitle=body.subtitle,
+        gradient_from=body.gradient_from, gradient_to=body.gradient_to,
+        image_url=body.image_url, link=body.link,
+        tag=body.tag, tag_color=body.tag_color or '#D4A84A',
+        position=body.position, is_published=body.is_published,
+    )
     db.add(s); db.commit(); db.refresh(s)
     audit(db, user_id=u.id, actor_email=u.email, action='edm_create',
           status='success', request=request, target_type='edm_slide', target_id=s.id,
@@ -2020,7 +2067,14 @@ def admin_quotes(u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)
 @router.post('/admin/quotes')
 def admin_quote_create(body: QuoteUpsertReq, request: Request,
                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
-    q = QuoteDB(id=str(uuid.uuid4()), **body.dict())
+    q = QuoteDB(
+        id=str(uuid.uuid4()),
+        text=body.text,
+        author=body.author,
+        source=body.source,
+        position=body.position,
+        is_published=body.is_published,
+    )
     db.add(q); db.commit(); db.refresh(q)
     audit(db, user_id=u.id, actor_email=u.email, action='quote_create',
           status='success', request=request, target_type='quote', target_id=q.id)

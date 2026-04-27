@@ -1,0 +1,51 @@
+{
+  "summary": "Sprint G backend testing for HSI Employee Engagement Platform. 33 pytest cases covering root/health, MFA login (OTP from dev-fallback log), uploads (local fallback), practices with attachments, /api/users/me patch, admin analytics (xp-trends, top-contributors, practice-funnel, revenue, notification-engagement), admin payout (quarters, detail, CSV/PDF export, approve), RBAC (employee 403), and regression (dashboard, xp, practices, notifications). 31/33 PASSED. 2 real backend bugs identified.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/admin/payout/{quarter}/export.csv",
+        "issue": "CSV body is corrupted: header row is overwritten by a mis-ordered TOTAL row. Root cause in server.py ~line 2809: `buf.seek(0)` is called BEFORE writing the final blank row + TOTAL row, so those two extra writerow() calls land at byte 0 and clobber the first 21 bytes of the 'employee_id,name,email,...' header. Response body starts with '\\r\\n,,,,,,,,,TOTAL,0\\r\\nil,department,practice,...' instead of 'employee_id,name,email,...'. Fix: remove the buf.seek(0) line (or move it AFTER the last writerow and use buf.read()).",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "PATCH /api/users/me",
+        "issue": "Response (user_to_dict) omits 'phone' and 'date_of_birth' fields even though PATCH accepts them and persists them to the DB. server.py:911 user_to_dict() dict-literal is missing u.phone and u.date_of_birth keys. Frontend profile UI will therefore show stale phone values after save.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sprint_g.py",
+    "/app/test_reports/pytest/sprint_g_results.xml"
+  ],
+  "action_items": [
+    "backend/server.py ~2809 admin_payout_csv: delete `buf.seek(0)` that sits BEFORE the TOTAL rows, and return buf.getvalue() after all writerow() calls. Verified: writing '\\r\\n' + ',,,,,,,,,TOTAL,0\\r\\n' (21 bytes) at offset 0 is exactly what overwrites 'employee_id,name,ema' leaving 'il,department,...' — matches the corrupted response exactly.",
+    "backend/server.py:911 user_to_dict(): add 'phone': u.phone and 'date_of_birth': u.date_of_birth.isoformat() if u.date_of_birth else None to the returned dict so PATCH /api/users/me round-trips these fields."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3055 lines — exceeds the 700-line guideline; split into auth.py, uploads.py, analytics.py, payout.py, practices.py routers for maintainability.",
+    "Base.metadata.create_all(bind=engine) runs at import time; crashes the whole process if DB is momentarily unavailable. Preferable to move to a startup event with retry/backoff (seed.py already has this pattern — reuse it).",
+    "Preview pod was found with PostgreSQL not installed at all — backend had been crash-looping until I installed postgresql-15, created hsi_user/hsi_portal, ran scripts/init.sql, and re-seeded via `python seed.py`. A pod-startup hook (entrypoint) that ensures a local DB in preview mode would prevent this entire class of outage.",
+    "MinIO fallback log line is emitted at WARNING level every process start — that's fine, but it is the ONLY signal that object storage is degraded. Consider surfacing it in /api/health payload (already shows storage.mode=local, good) and in /api/ root response (already shows minio_active=false, good).",
+    "CSV export: csv.writer uses default dialect (\\r\\n line terminator); fine for Excel but confirm this is acceptable vs \\n if a unix consumer parses it."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sprint_g.py (NEW — 33 pytest cases for Sprint G)"
+  ],
+  "success_rate": {"backend": "93.9% (31/33)", "frontend": "N/A (not tested per request)"},
+  "test_credentials": "Admin: admin@hitachi-systems.com / Admin@123 (MFA enabled; OTP logged to /var/log/supervisor/backend.err.log as '[email][DEV-FALLBACK]'). Employee: employee@hitachi-systems.com / Employee@123.",
+  "seed_data_creation": "Ran /app/backend/seed.py — created 7 users (super_admin, admin, manager, 4 employees) with @hitachi-systems.com emails, plus 4 pillars, 24 icons, 7 EDM slides, 5 quotes. Test creates one 'TEST_SprintG Practice' via POST /api/practices (pillar=innovator).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview pod had NO PostgreSQL installed (not even the binary) — this iteration installed postgresql-15 via apt, started pg_ctlcluster, created hsi_user/hsi_portal DB, ran /app/scripts/init.sql and /app/backend/seed.py. If the pod is restarted without persistence, these steps must be repeated (or main agent should wire an init script into the supervisor entrypoint). Backend listens on 127.0.0.1:8001 via supervisor (config already correct). Public URL https://docker-start-demo.preview.emergentagent.com proxies to :8001 and works once PG is up. MinIO and Redis are genuinely absent in preview — local-disk and no-pubsub fallbacks are working as designed (not bugs). MFA is ON: extract OTP codes from /var/log/supervisor/backend.err.log using regex `OTP for <email> \\(purpose=login\\): (\\d+)` — helper `_read_latest_otp()` in test_sprint_g.py already does this. Re-run after bug fixes: `cd /app/backend && python -m pytest tests/test_sprint_g.py -v`.",
+  "rca_of_the_issue": {
+    "csv_export_bug": "server.py admin_payout_csv() writes header + per-user rows to StringIO buf, then calls buf.seek(0) BEFORE writing the blank separator row and the TOTAL row. csv.writer re-uses the same file handle, so those final two writerow() calls start writing at offset 0 and overwrite the first 21 bytes of the 'employee_id,name,email,department,practice,...' header. Result: body = b'\\r\\n,,,,,,,,,TOTAL,0\\r\\nil,department,...' — unparseable by any CSV consumer. Fix: drop the seek(0) line (buf.getvalue() doesn't need it) and let the TOTAL row be appended at the tail, where it belongs. Repro: GET /api/admin/payout/2026-Q2/export.csv with admin JWT; compare first line to expected 'employee_id,name,email,...' header.",
+    "patch_users_me_bug": "user_to_dict() at server.py:911 returns a dict literal that does NOT include keys 'phone' or 'date_of_birth', even though the PatchMeReq pydantic model accepts both and the PATCH handler persists both to UserDB. The DB row is correctly updated (verifiable by re-login /api/auth/me — which ALSO uses user_to_dict so will still omit it). Fix: add 'phone': u.phone and 'date_of_birth': u.date_of_birth.isoformat() if u.date_of_birth else None to the dict in user_to_dict()."
+  }
+}

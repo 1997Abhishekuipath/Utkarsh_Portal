@@ -38,7 +38,8 @@ sentry_sdk.init(
     send_default_pii=False,
 )
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Form, Query
+from fastapi.responses import StreamingResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -53,6 +54,8 @@ from typing import Optional, List
 
 from services.email import send_otp as ses_send_otp, is_configured as ses_is_configured
 from services.rate_limit import check_or_raise as rl_check, is_redis_active
+from services import storage as storage_svc
+from services import pubsub as pubsub_svc
 
 ROOT_DIR = Path(__file__).parent
 
@@ -278,6 +281,7 @@ class BestPracticeDB(Base):
     xp_awarded     = Column(Integer, default=0)
     replication_cnt= Column(Integer, default=0)
     is_featured    = Column(Boolean, default=False)
+    attachments    = Column(JSONB, default=list)    # Sprint G — [{key,url,filename,content_type,size}]
     created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
@@ -429,6 +433,26 @@ class UserNotificationDB(Base):
     )
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+#  Sprint G — File Asset model (MinIO / object storage)
+# ═════════════════════════════════════════════════════════════════════════════
+class FileAssetDB(Base):
+    """Tracks every object uploaded via /api/uploads for audit + cleanup."""
+    __tablename__ = 'file_assets'
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    uploader_id   = Column(String, ForeignKey('users.id'), nullable=True, index=True)
+    object_key    = Column(String, nullable=False, unique=True, index=True)
+    url           = Column(String, nullable=False)
+    filename      = Column(String, nullable=False)
+    content_type  = Column(String, nullable=True)
+    size_bytes    = Column(BigInteger, default=0)
+    storage       = Column(String, default='minio')    # 'minio' | 'local'
+    category      = Column(String, default='misc')     # 'avatar'|'practice'|'edm'|'tech_day'|'misc'
+    linked_type   = Column(String, nullable=True)      # 'best_practice'|'user_avatar'|...
+    linked_id     = Column(String, nullable=True)
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -461,6 +485,29 @@ def _ensure_domain_check_constraint():
 
 
 _ensure_domain_check_constraint()
+
+
+# ── Sprint G — add attachments JSONB to best_practices if missing ────────────
+def _ensure_bp_attachments_column():
+    sql = """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name='best_practices' AND column_name='attachments'
+        ) THEN
+            ALTER TABLE best_practices ADD COLUMN attachments JSONB DEFAULT '[]'::jsonb;
+        END IF;
+    END$$;
+    """
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(sql)
+    except Exception as e:                                          # noqa: BLE001
+        logging.warning(f"[migration] best_practices.attachments skipped: {e}")
+
+
+_ensure_bp_attachments_column()
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -572,6 +619,7 @@ class PracticeSubmitReq(BaseModel):
     art_tag: Optional[str] = None
     tags: Optional[List[str]] = []
     status: str = 'pending'             # draft → pending on submit
+    attachments: Optional[List[dict]] = []   # Sprint G — [{key,url,filename,content_type,size}]
 
 
 class ReplicationSubmitReq(BaseModel):
@@ -1185,6 +1233,9 @@ class PatchMeReq(BaseModel):
     department: Optional[str] = None
     employee_id: Optional[str] = None
     date_of_birth: Optional[str] = None
+    avatar_url: Optional[str] = None          # Sprint G
+    phone: Optional[str] = None
+    designation: Optional[str] = None
 
 
 @router.patch('/users/me')
@@ -1203,6 +1254,12 @@ def patch_me(body: PatchMeReq, u: UserDB = Depends(get_current_user), db: Sessio
             u.date_of_birth = date.fromisoformat(body.date_of_birth) if body.date_of_birth else None
         except ValueError:
             raise HTTPException(400, 'Invalid date format (YYYY-MM-DD)')
+    if body.avatar_url is not None:
+        u.avatar_url = body.avatar_url.strip() or None
+    if body.phone is not None:
+        u.phone = body.phone.strip() or None
+    if body.designation is not None:
+        u.designation = body.designation.strip() or None
     db.commit()
     db.refresh(u)
     return user_to_dict(u)
@@ -1472,14 +1529,16 @@ def audit_log_list(u: UserDB = Depends(require_role('admin', 'super_admin')),
 @router.get('/')
 def root():
     return {
-        'message': 'HSI Employee Engagement Platform API v2.0',
+        'message': 'HSI Employee Engagement Platform API v2.1',
         'status': 'running',
         'allowed_domain': ALLOWED_DOMAIN,
         'mfa_enabled': MFA_ENABLED,
         'ses_configured': ses_is_configured(),
         'redis_active': is_redis_active(),
         'sentry_active': bool(_sentry_dsn),
-        'sprint': 'F',
+        'storage_mode': storage_svc.mode(),
+        'minio_active': storage_svc.is_minio_active(),
+        'sprint': 'G',
     }
 
 
@@ -1503,6 +1562,13 @@ def health_check(db: Session = Depends(get_db)):
     # Sentry check
     checks['sentry'] = {'status': 'configured' if _sentry_dsn else 'disabled (no SENTRY_DSN)'}
 
+    # Sprint G — Storage check
+    checks['storage'] = {
+        'status': 'ok',
+        'mode': storage_svc.mode(),
+        'minio_active': storage_svc.is_minio_active(),
+    }
+
     # Scheduler check
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -1513,7 +1579,7 @@ def health_check(db: Session = Depends(get_db)):
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={'status': overall, 'checks': checks,
-                 'version': '2.0.0', 'sprint': 'F',
+                 'version': '2.1.0', 'sprint': 'G',
                  'timestamp': datetime.now(timezone.utc).isoformat()},
         status_code=200 if overall == 'healthy' else 503,
     )
@@ -1825,6 +1891,11 @@ async def admin_publish(body: PublishReq, request: Request,
         'id': h.id,
     }
     await ws_manager.broadcast(payload)
+    # Sprint G — also publish to Redis so other replicas can fan out
+    try:
+        await pubsub_svc.publish(payload)
+    except Exception:                                      # noqa: BLE001
+        pass
     return {'message': 'Published',
             'subscribers_notified': ws_manager.count, 'event': payload}
 
@@ -1910,6 +1981,7 @@ def submit_practice(body: PracticeSubmitReq, u: UserDB = Depends(get_current_use
         what_content=body.what_content, impact_content=body.impact_content,
         difficulty=body.difficulty, pillar=body.pillar, art_tag=body.art_tag,
         tags=body.tags or [], status=body.status or 'pending',
+        attachments=body.attachments or [],
     )
     db.add(bp)
     db.commit()
@@ -1964,6 +2036,7 @@ def _bp_dict(bp: BestPracticeDB, db: Session) -> dict:
         'tags': bp.tags or [], 'status': bp.status,
         'xp_awarded': bp.xp_awarded, 'replication_cnt': bp.replication_cnt,
         'is_featured': bp.is_featured, 'reject_reason': bp.reject_reason,
+        'attachments': bp.attachments or [],
         'author_name': author.name if author else 'Unknown',
         'author_id': bp.author_id,
         'created_at': bp.created_at.isoformat() if bp.created_at else None,
@@ -2429,6 +2502,430 @@ def admin_notifications_list(u: UserDB = Depends(require_role('admin', 'super_ad
             for n in rows]
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT G — File Uploads (MinIO / object storage)
+# ═══════════════════════════════════════════════════════════════════════════════
+MAX_UPLOAD_BYTES = int(os.environ.get('MAX_UPLOAD_BYTES', str(10 * 1024 * 1024)))  # 10 MB
+_ALLOWED_CATEGORIES = {'avatar', 'practice', 'edm', 'tech_day', 'cert', 'misc'}
+
+
+@router.post('/uploads')
+async def upload_file(
+    file: UploadFile = File(...),
+    category: str = Form('misc'),
+    linked_type: Optional[str] = Form(None),
+    linked_id: Optional[str] = Form(None),
+    u: UserDB = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generic authenticated file upload.
+
+    Returns: {id, key, url, filename, size, content_type, storage}
+    """
+    if category not in _ALLOWED_CATEGORIES:
+        raise HTTPException(400, f"invalid category (allowed: {sorted(_ALLOWED_CATEGORIES)})")
+
+    # Read into memory; abort if over limit
+    raw = await file.read()
+    if len(raw) == 0:
+        raise HTTPException(400, 'empty file')
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"file too large (max {MAX_UPLOAD_BYTES} bytes)")
+
+    import io as _io
+    result = storage_svc.upload_fileobj(
+        _io.BytesIO(raw), filename=file.filename or 'unnamed',
+        prefix=category, content_type=file.content_type,
+    )
+    asset = FileAssetDB(
+        id=str(uuid.uuid4()), uploader_id=u.id,
+        object_key=result['key'], url=result['url'],
+        filename=file.filename or 'unnamed', content_type=result['content_type'],
+        size_bytes=result['size'], storage=result['storage'], category=category,
+        linked_type=linked_type, linked_id=linked_id,
+    )
+    db.add(asset)
+    db.commit()
+    return {
+        'id': asset.id, 'key': result['key'], 'url': result['url'],
+        'filename': asset.filename, 'size': result['size'],
+        'content_type': result['content_type'], 'storage': result['storage'],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT G — Admin Analytics Dashboard endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+@router.get('/admin/analytics/xp-trends')
+def admin_analytics_xp_trends(
+    period: str = Query('weekly', regex='^(daily|weekly|monthly)$'),
+    buckets: int = Query(12, ge=1, le=52),
+    u: UserDB = Depends(require_role('admin', 'super_admin')),
+    db: Session = Depends(get_db),
+):
+    """Time-series of XP credited, bucketed by day/week/month."""
+    trunc = {'daily': 'day', 'weekly': 'week', 'monthly': 'month'}[period]
+    rows = db.execute(text(f"""
+        SELECT date_trunc('{trunc}', created_at) AS bucket,
+               SUM(xp_delta) AS xp,
+               COUNT(*)      AS events
+          FROM xp_ledger
+         WHERE created_at > now() - INTERVAL '{buckets} {trunc}s'
+      GROUP BY bucket
+      ORDER BY bucket
+    """)).mappings().all()
+    return {
+        'period': period,
+        'series': [{'bucket': r['bucket'].isoformat() if r['bucket'] else None,
+                    'xp': int(r['xp'] or 0), 'events': int(r['events'] or 0)}
+                   for r in rows],
+    }
+
+
+@router.get('/admin/analytics/top-contributors')
+def admin_analytics_top(
+    limit: int = Query(10, ge=1, le=50),
+    quarter: Optional[str] = None,
+    u: UserDB = Depends(require_role('admin', 'super_admin')),
+    db: Session = Depends(get_db),
+):
+    """Top users by XP earned in the given quarter (default: current)."""
+    q = quarter or current_quarter()
+    rows = db.execute(text("""
+        SELECT u.id, u.name, u.email, u.department, u.practice, u.avatar_url,
+               COALESCE(SUM(xl.xp_delta), 0) AS xp
+          FROM users u
+          LEFT JOIN xp_ledger xl ON xl.user_id = u.id AND xl.quarter = :q
+         WHERE u.is_active = true
+      GROUP BY u.id
+      ORDER BY xp DESC NULLS LAST
+         LIMIT :lim
+    """), {'q': q, 'lim': limit}).mappings().all()
+    return {
+        'quarter': q,
+        'items': [{
+            'user_id': r['id'], 'name': r['name'], 'email': r['email'],
+            'department': r['department'], 'practice': r['practice'],
+            'avatar_url': r['avatar_url'], 'xp': int(r['xp'] or 0),
+        } for r in rows],
+    }
+
+
+@router.get('/admin/analytics/practice-funnel')
+def admin_analytics_funnel(
+    u: UserDB = Depends(require_role('admin', 'super_admin')),
+    db: Session = Depends(get_db),
+):
+    """Best-practice submissions funnel: draft → pending → approved/rejected."""
+    rows = db.execute(text("""
+        SELECT status, COUNT(*) AS n
+          FROM best_practices
+      GROUP BY status
+    """)).mappings().all()
+    funnel = {'draft': 0, 'pending': 0, 'approved': 0, 'rejected': 0}
+    for r in rows:
+        if r['status'] in funnel:
+            funnel[r['status']] = int(r['n'])
+    rep_rows = db.execute(text("""
+        SELECT status, COUNT(*) AS n, COUNT(po_number) AS with_po
+          FROM replications
+      GROUP BY status
+    """)).mappings().all()
+    rep = {'pending': {'count': 0, 'with_po': 0},
+           'approved': {'count': 0, 'with_po': 0},
+           'rejected': {'count': 0, 'with_po': 0}}
+    for r in rep_rows:
+        s = r['status']
+        if s in rep:
+            rep[s] = {'count': int(r['n']), 'with_po': int(r['with_po'] or 0)}
+    return {'practices': funnel, 'replications': rep}
+
+
+@router.get('/admin/analytics/revenue')
+def admin_analytics_revenue(
+    u: UserDB = Depends(require_role('admin', 'super_admin')),
+    db: Session = Depends(get_db),
+):
+    """Replication revenue captured via PO (₹) grouped by quarter."""
+    # Use created_at quarter (po_value_inr is stored as TEXT)
+    rows = db.execute(text("""
+        SELECT date_trunc('quarter', created_at) AS quarter_start,
+               COUNT(po_number)                   AS deals,
+               COALESCE(SUM(NULLIF(po_value_inr,'')::numeric),0) AS revenue
+          FROM replications
+         WHERE status='approved' AND po_number IS NOT NULL
+      GROUP BY quarter_start
+      ORDER BY quarter_start DESC
+         LIMIT 8
+    """)).mappings().all()
+    # Also overall totals
+    totals = db.execute(text("""
+        SELECT COUNT(po_number) AS deals,
+               COALESCE(SUM(NULLIF(po_value_inr,'')::numeric),0) AS revenue
+          FROM replications
+         WHERE status='approved' AND po_number IS NOT NULL
+    """)).mappings().first()
+    return {
+        'overall': {
+            'total_deals':   int(totals['deals'] or 0),
+            'total_revenue': float(totals['revenue'] or 0),
+        },
+        'by_quarter': [{
+            'quarter': r['quarter_start'].strftime('%Y-Q%q').replace(
+                'Q1','Q1').replace('Q4','Q4') if r['quarter_start'] else None,
+            'quarter_start': r['quarter_start'].isoformat() if r['quarter_start'] else None,
+            'deals':   int(r['deals'] or 0),
+            'revenue': float(r['revenue'] or 0),
+        } for r in rows],
+    }
+
+
+@router.get('/admin/analytics/notification-engagement')
+def admin_analytics_engagement(
+    u: UserDB = Depends(require_role('admin', 'super_admin')),
+    db: Session = Depends(get_db),
+):
+    """Notification send vs read rates, last 30 days."""
+    stats = db.execute(text("""
+        SELECT COUNT(*)                                   AS delivered,
+               COUNT(*) FILTER (WHERE is_read)            AS read_cnt,
+               COUNT(*) FILTER (WHERE is_dismissed)       AS dismissed
+          FROM user_notifications
+         WHERE delivered_at > now() - INTERVAL '30 days'
+    """)).mappings().first()
+    by_cat = db.execute(text("""
+        SELECT n.category,
+               COUNT(un.id)                               AS delivered,
+               COUNT(un.id) FILTER (WHERE un.is_read)     AS read_cnt
+          FROM user_notifications un
+          JOIN notifications n ON n.id = un.notification_id
+         WHERE un.delivered_at > now() - INTERVAL '30 days'
+      GROUP BY n.category
+      ORDER BY delivered DESC
+    """)).mappings().all()
+    delivered = int(stats['delivered'] or 0)
+    read_cnt  = int(stats['read_cnt']  or 0)
+    dismissed = int(stats['dismissed'] or 0)
+    return {
+        'window_days': 30,
+        'totals': {
+            'delivered': delivered, 'read': read_cnt, 'dismissed': dismissed,
+            'read_rate': round((read_cnt / delivered * 100) if delivered else 0.0, 2),
+        },
+        'by_category': [{
+            'category': r['category'] or 'other',
+            'delivered': int(r['delivered'] or 0),
+            'read': int(r['read_cnt'] or 0),
+            'read_rate': round(
+                (int(r['read_cnt'] or 0) / int(r['delivered'] or 1) * 100)
+                if r['delivered'] else 0.0, 2),
+        } for r in by_cat],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT G — Payroll / Incentive Payout export (CSV + PDF)
+# ═══════════════════════════════════════════════════════════════════════════════
+def _quarter_payout_rows(db: Session, quarter: str) -> list[dict]:
+    """Compute per-user payout for a quarter from xp_ledger."""
+    rows = db.execute(text("""
+        SELECT u.id, u.name, u.email, u.employee_id, u.department, u.practice,
+               COALESCE(SUM(xl.xp_delta) FILTER (WHERE xl.source_type='original_practice'),0) AS xp_original,
+               COALESCE(SUM(xl.xp_delta) FILTER (WHERE xl.source_type='replication'),0)       AS xp_replication,
+               COALESCE(SUM(xl.xp_delta) FILTER (WHERE xl.source_type='tech_day'),0)          AS xp_tech_day,
+               COALESCE(SUM(xl.xp_delta) FILTER (WHERE xl.source_type NOT IN
+                    ('original_practice','replication','tech_day')),0)                        AS xp_other,
+               COALESCE(SUM(xl.xp_delta),0) AS xp_total
+          FROM users u
+          LEFT JOIN xp_ledger xl ON xl.user_id = u.id AND xl.quarter = :q
+         WHERE u.is_active = true
+      GROUP BY u.id
+        HAVING COALESCE(SUM(xl.xp_delta),0) > 0
+      ORDER BY xp_total DESC
+    """), {'q': quarter}).mappings().all()
+    out = []
+    for r in rows:
+        amt = (int(r['xp_original']) * INR_RATE['original_practice']
+             + int(r['xp_replication']) * INR_RATE['replication']
+             + int(r['xp_tech_day']) * INR_RATE['tech_day']
+             + int(r['xp_other']) * INR_RATE['original_practice'] * 0.5)   # half-rate for other
+        out.append({
+            'user_id': r['id'], 'name': r['name'], 'email': r['email'],
+            'employee_id': r['employee_id'] or '', 'department': r['department'] or '',
+            'practice': r['practice'] or '',
+            'xp_original':    int(r['xp_original']),
+            'xp_replication': int(r['xp_replication']),
+            'xp_tech_day':    int(r['xp_tech_day']),
+            'xp_other':       int(r['xp_other']),
+            'xp_total':       int(r['xp_total']),
+            'amount_inr':     round(amt, 2),
+        })
+    return out
+
+
+@router.get('/admin/payout/quarters')
+def admin_payout_quarters(u: UserDB = Depends(require_role('admin', 'super_admin')),
+                          db: Session = Depends(get_db)):
+    rows = db.execute(text("""
+        SELECT quarter,
+               COUNT(DISTINCT user_id)     AS users,
+               SUM(xp_delta)                AS xp_total
+          FROM xp_ledger
+      GROUP BY quarter
+      ORDER BY quarter DESC
+    """)).mappings().all()
+    return [{'quarter': r['quarter'], 'users': int(r['users']),
+             'xp_total': int(r['xp_total'] or 0)} for r in rows]
+
+
+@router.get('/admin/payout/{quarter}')
+def admin_payout(quarter: str,
+                 u: UserDB = Depends(require_role('admin', 'super_admin')),
+                 db: Session = Depends(get_db)):
+    items = _quarter_payout_rows(db, quarter)
+    total_inr = sum(i['amount_inr'] for i in items)
+    return {
+        'quarter': quarter, 'users': len(items),
+        'total_inr': round(total_inr, 2),
+        'rates': INR_RATE, 'items': items,
+    }
+
+
+@router.get('/admin/payout/{quarter}/export.csv')
+def admin_payout_csv(quarter: str,
+                     u: UserDB = Depends(require_role('admin', 'super_admin')),
+                     db: Session = Depends(get_db)):
+    import csv, io as _io
+    items = _quarter_payout_rows(db, quarter)
+    buf = _io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['employee_id', 'name', 'email', 'department', 'practice',
+                'xp_original', 'xp_replication', 'xp_tech_day', 'xp_other', 'xp_total',
+                'amount_inr'])
+    for i in items:
+        w.writerow([i['employee_id'], i['name'], i['email'], i['department'], i['practice'],
+                    i['xp_original'], i['xp_replication'], i['xp_tech_day'],
+                    i['xp_other'], i['xp_total'], i['amount_inr']])
+    buf.seek(0)
+    total = sum(i['amount_inr'] for i in items)
+    w.writerow([])
+    w.writerow(['', '', '', '', '', '', '', '', '', 'TOTAL', round(total, 2)])
+    content = buf.getvalue().encode('utf-8')
+    return StreamingResponse(
+        iter([content]),
+        media_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="payout_{quarter}.csv"'},
+    )
+
+
+@router.get('/admin/payout/{quarter}/export.pdf')
+def admin_payout_pdf(quarter: str,
+                     u: UserDB = Depends(require_role('admin', 'super_admin')),
+                     db: Session = Depends(get_db)):
+    """Generate a branded PDF incentive statement for the given quarter."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+    )
+    from reportlab.lib.units import mm
+    import io as _io
+
+    items = _quarter_payout_rows(db, quarter)
+    total = sum(i['amount_inr'] for i in items)
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=15*mm, rightMargin=15*mm,
+                            topMargin=15*mm, bottomMargin=15*mm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'TitleRed', parent=styles['Title'],
+        textColor=colors.HexColor('#CC0000'), alignment=1)
+    elems = [
+        Paragraph('HSI Employee Engagement Platform', title_style),
+        Paragraph(f"Quarterly Incentive Payout Register &mdash; {quarter}",
+                  styles['Heading2']),
+        Spacer(1, 6*mm),
+        Paragraph(f"Users: <b>{len(items)}</b> &nbsp;&nbsp;"
+                  f"Total Payout: <b>&#8377;{total:,.2f}</b>",
+                  styles['Normal']),
+        Spacer(1, 4*mm),
+    ]
+    headers = ['Emp ID', 'Name', 'Dept', 'XP Orig', 'XP Rep', 'XP Tech',
+               'XP Other', 'XP Total', 'Amount (₹)']
+    data = [headers]
+    for i in items:
+        data.append([
+            i['employee_id'] or '-',
+            i['name'][:20],
+            (i['department'] or '-')[:12],
+            i['xp_original'], i['xp_replication'], i['xp_tech_day'],
+            i['xp_other'], i['xp_total'], f"{i['amount_inr']:,.2f}",
+        ])
+    data.append(['', '', '', '', '', '', '', 'TOTAL', f"{total:,.2f}"])
+    tbl = Table(data, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#CC0000')),
+        ('TEXTCOLOR',  (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',   (0, 0), (-1, 0), 9),
+        ('FONTSIZE',   (0, 1), (-1, -1), 8),
+        ('GRID',       (0, 0), (-1, -1), 0.25, colors.grey),
+        ('ALIGN',      (3, 1), (-1, -1), 'RIGHT'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F1F5F9')),
+        ('FONTNAME',   (0, -1), (-1, -1), 'Helvetica-Bold'),
+    ]))
+    elems.append(tbl)
+    elems.append(Spacer(1, 10*mm))
+    elems.append(Paragraph(
+        f"<font size='8' color='#64748B'>"
+        f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
+        f"Approver: {u.email} · Confidential — HSI Payroll"
+        f"</font>", styles['Normal']))
+    doc.build(elems)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="payout_{quarter}.pdf"'},
+    )
+
+
+@router.post('/admin/payout/{quarter}/approve')
+def admin_payout_approve(quarter: str, request: Request,
+                         u: UserDB = Depends(require_role('admin', 'super_admin')),
+                         db: Session = Depends(get_db)):
+    """Mark all incentive_calculations rows for the quarter as 'approved'."""
+    items = _quarter_payout_rows(db, quarter)
+    n = 0
+    now = datetime.now(timezone.utc)
+    for i in items:
+        inc = db.query(IncentiveCalcDB).filter(
+            IncentiveCalcDB.user_id == i['user_id'],
+            IncentiveCalcDB.quarter == quarter).first()
+        if not inc:
+            inc = IncentiveCalcDB(
+                id=str(uuid.uuid4()), user_id=i['user_id'], quarter=quarter,
+                xp_original=i['xp_original'], xp_replication=i['xp_replication'],
+                xp_tech_day=i['xp_tech_day'], xp_other=i['xp_other'],
+                amount_inr=str(i['amount_inr']),
+            )
+            db.add(inc)
+        inc.status      = 'approved'
+        inc.approved_by = u.id
+        inc.approved_at = now
+        inc.amount_inr  = str(i['amount_inr'])
+        n += 1
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='payout_approve',
+          status='success', request=request,
+          target_type='quarter', target_id=quarter,
+          details={'users': n, 'total_inr': sum(i['amount_inr'] for i in items)})
+    return {'approved': n, 'quarter': quarter}
+
+
 # ── WebSocket endpoint for clients ────────────────────────────────────────────
 # NOTE: WebSocket lives at /api/ws (NOT /ws) so it routes through the same
 # kubernetes/nginx ingress rule as REST. Clients connect to:
@@ -2477,12 +2974,36 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIDMiddleware)
 
+
+# ── Sprint G — static mount for local-fallback uploads (served when MinIO off) ─
+try:
+    from fastapi.staticfiles import StaticFiles
+    from pathlib import Path as _P
+    _UP = _P(os.environ.get('LOCAL_UPLOADS_DIR', '/tmp/hsi_uploads')).resolve()
+    _UP.mkdir(parents=True, exist_ok=True)
+    app.mount('/api/uploads-local', StaticFiles(directory=str(_UP)), name='uploads-local')
+except Exception as _stat_err:                                         # noqa: BLE001
+    logging.warning(f"[static] uploads-local mount failed: {_stat_err}")
+
+
+# ── Sprint G — wire Redis pub/sub into the WebSocket manager ─────────────────
+@app.on_event('startup')
+async def _start_pubsub_listener():
+    try:
+        await pubsub_svc.init_publisher()
+        # When a publish arrives on Redis, broadcast to this instance's WS clients
+        await pubsub_svc.start_listener(ws_manager.broadcast)
+    except Exception as e:                                             # noqa: BLE001
+        logging.warning(f"[pubsub] listener startup skipped: {e}")
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s [%(name)s] %(message)s')
 logger = logging.getLogger(__name__)
 _sentry_status = f"dsn={'set' if _sentry_dsn else 'not set (disabled)'}"
 logger.info(f"HSI EEP API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} · "
             f"mfa={'on' if MFA_ENABLED else 'off'} · ses={'on' if ses_is_configured() else 'off (dev)'} · "
-            f"redis={'on' if is_redis_active() else 'in-memory'} · sentry={_sentry_status}")
+            f"redis={'on' if is_redis_active() else 'in-memory'} · sentry={_sentry_status} · "
+            f"storage={storage_svc.mode()}")
 
 
 # ── Sprint E — Birthday XP Scheduler ─────────────────────────────────────────

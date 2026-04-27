@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import TopBar from "../components/TopBar";
 import {
   User, Mail, Building2, Briefcase, Calendar, Clock, Shield,
-  Award, Zap, Trophy, Edit2, Save, X, CheckCircle, AlertCircle
+  Award, Zap, Trophy, Edit2, Save, X, CheckCircle, AlertCircle, Camera, Loader2
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -13,9 +13,11 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [xpSummary, setXpSummary] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: "", department: "", employee_id: "", date_of_birth: "" });
+  const [form, setForm] = useState({ name: "", department: "", employee_id: "", date_of_birth: "", phone: "", designation: "" });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileRef = useRef(null);
 
   const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
 
@@ -33,6 +35,8 @@ export default function ProfilePage() {
           department: d.department || "",
           employee_id: d.employee_id || "",
           date_of_birth: d.date_of_birth || "",
+          phone: d.phone || "",
+          designation: d.designation || "",
         });
       }
       if (xpRes.ok) setXpSummary(await xpRes.json());
@@ -60,6 +64,47 @@ export default function ProfilePage() {
       }
     } finally { setSaving(false); }
   };
+
+  // Sprint G — avatar upload
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Avatar must be ≤ 5 MB", "error");
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "avatar");
+      fd.append("linked_type", "user_avatar");
+      fd.append("linked_id", profile?.id || "");
+      const up = await fetch(`${BACKEND}/api/uploads`, {
+        method: "POST", credentials: "include", body: fd,
+      });
+      if (!up.ok) throw new Error("upload failed");
+      const { url } = await up.json();
+      const patch = await fetch(`${BACKEND}/api/users/me`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_url: url }),
+      });
+      if (patch.ok) {
+        showToast("Avatar updated");
+        load();
+      } else throw new Error("save failed");
+    } catch (err) {
+      showToast(err.message || "Avatar upload failed", "error");
+    } finally {
+      setUploadingAvatar(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const avatarSrc = profile?.avatar_url
+    ? (profile.avatar_url.startsWith("http") ? profile.avatar_url : `${BACKEND}${profile.avatar_url}`)
+    : null;
 
   const ROLE_BADGE = {
     super_admin: "bg-red-100 text-red-700 border-red-200",
@@ -105,13 +150,38 @@ export default function ProfilePage() {
         {/* Avatar + XP card */}
         <div className="md:col-span-1 space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 text-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-[#CC0000] to-red-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-              <span className="text-white text-3xl font-bold">{profile?.name?.[0] || "?"}</span>
+            <div className="relative w-20 h-20 mx-auto mb-3">
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc} alt={`${profile?.name} avatar`}
+                  className="w-20 h-20 rounded-2xl object-cover shadow-lg"
+                />
+              ) : (
+                <div className="w-20 h-20 bg-gradient-to-br from-[#CC0000] to-red-700 rounded-2xl flex items-center justify-center shadow-lg">
+                  <span className="text-white text-3xl font-bold">{profile?.name?.[0] || "?"}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploadingAvatar}
+                aria-label="Upload new avatar"
+                data-testid="avatar-upload-btn"
+                className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#CC0000] focus:ring-offset-2 disabled:opacity-60"
+              >
+                {uploadingAvatar ? <Loader2 size={12} className="animate-spin text-gray-600" /> : <Camera size={12} className="text-gray-700" />}
+              </button>
+              <input
+                ref={fileRef} type="file" accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+                data-testid="avatar-upload-input"
+              />
             </div>
             <h2 className="text-lg font-bold text-gray-900">{profile?.name}</h2>
             <p className="text-sm text-gray-500">{profile?.email}</p>
             <span className={`inline-flex items-center mt-2 text-xs px-3 py-1 rounded-full font-medium border ${ROLE_BADGE[profile?.role] || "bg-gray-100 text-gray-600"}`}>
-              <Shield size={11} className="mr-1" />
+              <Shield size={11} className="mr-1" aria-hidden="true" />
               {profile?.role?.replace("_", " ").replace(/^./, c => c.toUpperCase())}
             </span>
           </div>
@@ -176,17 +246,21 @@ export default function ProfilePage() {
               <div className="space-y-4">
                 {[
                   ["Full Name", "name", "text"],
+                  ["Designation", "designation", "text"],
                   ["Department", "department", "text"],
                   ["Employee ID", "employee_id", "text"],
+                  ["Phone", "phone", "tel"],
                   ["Date of Birth", "date_of_birth", "date"],
                 ].map(([label, field, type]) => (
                   <div key={field}>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+                    <label htmlFor={`profile-${field}`} className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
                     <input
+                      id={`profile-${field}`}
                       type={type}
                       value={form[field] || ""}
                       onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none"
+                      data-testid={`profile-input-${field}`}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-300 focus:border-red-400 outline-none"
                     />
                   </div>
                 ))}
@@ -195,6 +269,7 @@ export default function ProfilePage() {
               <div>
                 <InfoRow icon={User}      label="Full Name"     value={profile?.name} />
                 <InfoRow icon={Mail}      label="Email"         value={profile?.email} />
+                <InfoRow icon={Briefcase} label="Designation"   value={profile?.designation} />
                 <InfoRow icon={Briefcase} label="Employee ID"   value={profile?.employee_id} />
                 <InfoRow icon={Building2} label="Department"    value={profile?.department} />
                 <InfoRow icon={Calendar}  label="Date of Birth" value={profile?.date_of_birth} />

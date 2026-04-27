@@ -33,7 +33,8 @@ Six containers wired up by `docker-compose.yml`:
 |-------------|---------------------------|-----------------------------------------------|
 | `db`         | postgres:16-alpine         | PostgreSQL 16 — WAL archiving enabled (Sprint F) |
 | `pgbouncer`  | bitnami/pgbouncer:1.22     | Connection pooler (500 client → 20 server)    |
-| `redis`      | redis:7-alpine             | Rate limiting + session metadata              |
+| `redis`      | redis:7-alpine             | Rate limiting + WS pub/sub (Sprint G)         |
+| `minio`      | minio/minio:latest         | S3-compatible object storage (Sprint G)       |
 | `backend`    | local build (Python 3.11)  | FastAPI API server + Sentry + Request-ID      |
 | `frontend`   | local build (Node 20/Nginx)| React SPA                                     |
 | `nginx`      | nginx:1.25-alpine          | TLS 1.3-only terminator + hardened headers    |

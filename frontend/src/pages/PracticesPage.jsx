@@ -55,6 +55,8 @@ export default function PracticesPage() {
     difficulty: "medium", pillar: "customer", art_tag: "retain",
     tags: "", status: "pending",
   });
+  const [attachments, setAttachments] = useState([]);           // Sprint G
+  const [uploadingFile, setUploadingFile] = useState(false);    // Sprint G
   const [repForm, setRepForm] = useState({ client_name: "", po_number: "", po_value_inr: "", notes: "" });
 
   const showToast = (msg, type = "success") => {
@@ -89,7 +91,11 @@ export default function PracticesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const body = { ...form, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [] };
+      const body = {
+        ...form,
+        tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        attachments,
+      };
       const res = await fetch(`${BACKEND}/api/practices`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -99,6 +105,7 @@ export default function PracticesPage() {
         showToast("Practice submitted! It will be reviewed by an admin.");
         setShowSubmit(false);
         setForm({ title: "", summary: "", why_content: "", how_content: "", what_content: "", impact_content: "", difficulty: "medium", pillar: "customer", art_tag: "retain", tags: "", status: "pending" });
+        setAttachments([]);
         fetchMine();
         setTab("mine");
       } else {
@@ -106,6 +113,41 @@ export default function PracticesPage() {
         showToast(d.detail || "Failed to submit", "error");
       }
     } finally { setSubmitting(false); }
+  };
+
+  // Sprint G — file upload for best-practice attachments
+  const handleAttachmentUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploadingFile(true);
+    try {
+      for (const f of files) {
+        if (f.size > 10 * 1024 * 1024) {
+          showToast(`${f.name} > 10 MB — skipped`, "error");
+          continue;
+        }
+        const fd = new FormData();
+        fd.append("file", f);
+        fd.append("category", "practice");
+        const res = await fetch(`${BACKEND}/api/uploads`, {
+          method: "POST", credentials: "include", body: fd,
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setAttachments(prev => [...prev, {
+            key: d.key, url: d.url, filename: d.filename,
+            content_type: d.content_type, size: d.size,
+          }]);
+        } else {
+          showToast(`Upload failed for ${f.name}`, "error");
+        }
+      }
+      e.target.value = "";
+    } finally { setUploadingFile(false); }
+  };
+
+  const removeAttachment = (key) => {
+    setAttachments(prev => prev.filter(a => a.key !== key));
   };
 
   const handleReplication = async (e) => {
@@ -358,6 +400,43 @@ export default function PracticesPage() {
               <FormField label="What? (Deliverables / Tools used)" name="what_content" component="textarea" rows={2} />
               <FormField label="Impact (Measurable outcomes)" name="impact_content" component="textarea" rows={2} />
               <FormField label="Tags (comma-separated)" name="tags" />
+
+              {/* Sprint G — Attachments */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Attachments (optional)</label>
+                <div className="flex items-center gap-3">
+                  <label data-testid="practice-attachment-btn"
+                    className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 cursor-pointer focus-within:ring-2 focus-within:ring-[#CC0000]">
+                    <Plus size={14} aria-hidden="true" />
+                    {uploadingFile ? "Uploading…" : "Add files"}
+                    <input type="file" multiple className="hidden"
+                      disabled={uploadingFile}
+                      onChange={handleAttachmentUpload}
+                      data-testid="practice-attachment-input" />
+                  </label>
+                  <span className="text-[11px] text-gray-400">Max 10 MB each · images, PDF, docs</span>
+                </div>
+                {attachments.length > 0 && (
+                  <ul className="mt-3 space-y-1.5" data-testid="practice-attachment-list">
+                    {attachments.map(a => (
+                      <li key={a.key} className="flex items-center justify-between px-3 py-1.5 bg-gray-50 rounded-lg text-xs">
+                        <span className="truncate">
+                          📎 {a.filename}
+                          <span className="text-gray-400 ml-2">
+                            ({Math.round(a.size / 1024)} KB)
+                          </span>
+                        </span>
+                        <button type="button" onClick={() => removeAttachment(a.key)}
+                          aria-label={`Remove ${a.filename}`}
+                          className="text-gray-400 hover:text-red-600 p-0.5 rounded focus:outline-none focus:ring-2 focus:ring-[#CC0000]">
+                          <X size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowSubmit(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
                 <button type="submit" disabled={submitting}

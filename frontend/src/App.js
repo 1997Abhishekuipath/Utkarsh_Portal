@@ -9,6 +9,8 @@ import PillarPage from "./pages/PillarPage";
 import AppPage from "./pages/AppPage";
 import AdminPage from "./pages/AdminPage";
 import AdminContentPage from "./pages/AdminContentPage";
+import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
+import AdminPayoutPage from "./pages/AdminPayoutPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -38,6 +40,10 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <a href="#main-content" className="skip-to-main" data-testid="skip-to-main">
+          Skip to main content
+        </a>
+        <div id="main-content">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -58,8 +64,12 @@ function App() {
           <Route path="/admin" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPage /></ProtectedRoute>} />
           <Route path="/admin/content" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminContentPage /></ProtectedRoute>} />
           <Route path="/admin/notifications" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminNotificationsPage /></ProtectedRoute>} />
+          {/* Sprint G — Analytics + Payout */}
+          <Route path="/admin/analytics" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminAnalyticsPage /></ProtectedRoute>} />
+          <Route path="/admin/payout" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPayoutPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </div>
       </BrowserRouter>
     </AuthProvider>
   );

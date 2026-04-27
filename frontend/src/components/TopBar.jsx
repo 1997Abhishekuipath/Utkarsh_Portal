@@ -93,47 +93,53 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
             {/* Notification Bell */}
             <div className="relative">
               <button onClick={toggleNotif}
-                className="relative flex items-center justify-center w-9 h-9 bg-white/20 hover:bg-white/30 rounded-lg transition-colors">
-                <Bell size={16} className="text-white" />
+                aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+                aria-haspopup="true" aria-expanded={notifOpen}
+                data-testid="notification-bell"
+                className="relative flex items-center justify-center w-9 h-9 bg-white/20 hover:bg-white/30 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70 focus:ring-offset-2 focus:ring-offset-[#CC0000]">
+                <Bell size={16} className="text-white" aria-hidden="true" />
                 {unread > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-yellow-400 text-black text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  <span className="absolute -top-1 -right-1 bg-yellow-400 text-black text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1"
+                    aria-hidden="true">
                     {unread > 99 ? "99+" : unread}
                   </span>
                 )}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 w-96 z-50 max-h-[480px] flex flex-col">
+                <div role="menu" aria-label="Notifications menu"
+                  className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 w-96 z-50 max-h-[480px] flex flex-col">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <span className="text-sm font-semibold text-gray-800">Notifications</span>
                     {unread > 0 && (
-                      <button onClick={markAllRead} className="text-xs text-[#CC0000] hover:underline">Mark all read</button>
+                      <button onClick={markAllRead} className="text-xs text-[#CC0000] hover:underline focus:outline-none focus:ring-2 focus:ring-[#CC0000] rounded">Mark all read</button>
                     )}
                   </div>
                   <div className="overflow-y-auto flex-1">
-                    {loadingNotifs && <div className="text-center py-6 text-gray-400 text-sm">Loading…</div>}
+                    {loadingNotifs && <div className="text-center py-6 text-gray-400 text-sm" role="status">Loading…</div>}
                     {!loadingNotifs && notifs.length === 0 && (
                       <div className="text-center py-8 text-gray-400 text-sm">No notifications yet</div>
                     )}
                     {notifs.map(n => (
-                      <div key={n.id} onClick={() => !n.is_read && markRead(n.id)}
-                        className={`flex gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${!n.is_read ? "bg-red-50" : ""}`}>
+                      <button type="button" role="menuitem" key={n.id}
+                        onClick={() => !n.is_read && markRead(n.id)}
+                        className={`w-full text-left flex gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors focus:outline-none focus:bg-gray-100 ${!n.is_read ? "bg-red-50" : ""}`}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2">
                             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[n.category] || "bg-gray-100 text-gray-600"}`}>
                               {n.category || "info"}
                             </span>
                             {n.is_urgent && <span className="text-[10px] text-red-600 font-bold">URGENT</span>}
-                            {!n.is_read && <div className="w-2 h-2 rounded-full bg-[#CC0000] mt-1 flex-shrink-0" />}
+                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-[#CC0000] mt-1 flex-shrink-0" aria-label="Unread" />}
                           </div>
                           <div className="text-xs font-semibold text-gray-800 mt-1 truncate">{n.title}</div>
                           <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{n.body}</div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <div className="px-4 py-2 border-t border-gray-100">
                     <Link to="/notifications" onClick={() => setNotifOpen(false)}
-                      className="block text-center text-xs text-[#CC0000] hover:underline py-1">
+                      className="block text-center text-xs text-[#CC0000] hover:underline py-1 focus:outline-none focus:ring-2 focus:ring-[#CC0000] rounded">
                       View all notifications →
                     </Link>
                   </div>
@@ -143,8 +149,9 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
 
             <div className="relative ml-1">
               <button data-testid="user-menu-button" onClick={() => { setOpen(!open); setNotifOpen(false); }}
-                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-lg px-3 py-1.5 transition-colors">
-                <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center">
+                aria-haspopup="true" aria-expanded={open} aria-label={`User menu for ${user?.name || 'user'}`}
+                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-lg px-3 py-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-white/70 focus:ring-offset-2 focus:ring-offset-[#CC0000]">
+                <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center" aria-hidden="true">
                   <span className="text-white text-[10px] font-bold">{user?.name?.[0]}</span>
                 </div>
                 <span className="text-white text-xs font-medium hidden sm:block">{firstName}</span>

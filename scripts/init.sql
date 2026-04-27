@@ -59,6 +59,20 @@ ALTER DEFAULT PRIVILEGES FOR ROLE hsi_migrate IN SCHEMA app
 -- ── Grant connection to database ─────────────────────────────────────────────
 GRANT CONNECT ON DATABASE hsi_portal TO hsi_api, hsi_admin, hsi_readonly, hsi_migrate;
 
+-- ── Sprint G: grant privileges on EXISTING tables too (app bootstrap) ───────
+-- Because tables are created by the POSTGRES_USER superuser via SQLAlchemy
+-- create_all(), grant runtime roles the appropriate access on the public schema
+-- so hsi_api (used by the backend in prod) can actually read/write.
+GRANT USAGE ON SCHEMA public TO hsi_api, hsi_admin, hsi_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO hsi_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hsi_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON TABLES TO hsi_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO hsi_api, hsi_admin;
+
 -- ── pgBouncer auth support ────────────────────────────────────────────────────
 -- Creates the function used by pgBouncer's auth_query when auth_type=scram-sha-256.
 -- Requires the pgbouncer user to have EXECUTE rights.

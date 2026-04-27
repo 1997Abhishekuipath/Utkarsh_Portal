@@ -152,12 +152,14 @@ cmd_up() {
     $COMPOSE ps
     echo ""
     ok "──────────────────────────────────────────────────────────────────"
-    ok "  HSI Enterprise Portal is up!"
-    ok "  URL:       ${REACT_APP_BACKEND_URL}"
-    ok "  Ports:     HTTP ${HTTP_PORT:-80}  |  HTTPS ${HTTPS_PORT:-443}"
-    ok "  Admin:     ${ADMIN_EMAIL}"
-    ok "  Logs:      ./setup.sh logs"
-    ok "  Stop:      ./setup.sh down"
+    ok "  HSI Employee Engagement Platform is up!"
+    ok "  URL:        ${REACT_APP_BACKEND_URL}"
+    ok "  Ports:      HTTP ${HTTP_PORT:-80}  |  HTTPS ${HTTPS_PORT:-443}"
+    ok "  Admin:      ${ADMIN_EMAIL}"
+    ok "  DB pool:    pgBouncer → PostgreSQL (transaction mode, ${PGBOUNCER_MAX_CLIENT_CONN:-500} max clients)"
+    ok "  Logs:       ./setup.sh logs"
+    ok "  Stop:       ./setup.sh down"
+    ok "  Pool stats: docker compose exec pgbouncer psql -p 6432 -U ${DB_USER:-hsi_user} pgbouncer -c 'SHOW POOLS;'"
     ok "──────────────────────────────────────────────────────────────────"
 }
 

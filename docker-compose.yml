@@ -1,10 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  HSI Enterprise Portal — Production Docker Compose
+#  HSI Employee Engagement Platform — Production Docker Compose
+#  PRD Reference: HSI-PRD-EEP-2026-v1.0 §9.1
+#  Stack: PostgreSQL 16 → pgBouncer 1.22 → FastAPI backend → React frontend → Nginx
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
-  # ── PostgreSQL Database ────────────────────────────────────────────────────
+  # ── PostgreSQL 16 Database ─────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: hsi_db
@@ -14,6 +16,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-hsi_password123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # DB initialisation: creates 4 app roles + app schema on first start
+      # (scripts/init.sql is idempotent — safe to leave in place)
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/10_init.sql:ro
     networks:
       - hsi_network
     healthcheck:
@@ -24,7 +29,50 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # ── Redis (rate limiting, session metadata) ────────────────────────────────
+  # ── pgBouncer 1.22 — Connection Pooler (PRD §2.3 + §9.1) ─────────────────
+  #  Sits between the backend API and PostgreSQL.
+  #  Transaction-mode pooling: each SQL statement can reuse a pooled connection,
+  #  supporting 500 concurrent client connections with only 20 server connections.
+  pgbouncer:
+    image: bitnami/pgbouncer:1.22
+    container_name: hsi_pgbouncer
+    environment:
+      # PostgreSQL backend connection
+      POSTGRESQL_HOST:             db
+      POSTGRESQL_PORT:             "5432"
+      POSTGRESQL_USERNAME:         ${DB_USER:-hsi_user}
+      POSTGRESQL_PASSWORD:         ${DB_PASSWORD:-hsi_password123}
+      POSTGRESQL_DATABASE:         ${DB_NAME:-hsi_portal}
+      # Pool configuration (PRD §9.1)
+      PGBOUNCER_POOL_MODE:         ${PGBOUNCER_POOL_MODE:-transaction}
+      PGBOUNCER_MAX_CLIENT_CONN:   "${PGBOUNCER_MAX_CLIENT_CONN:-500}"
+      PGBOUNCER_DEFAULT_POOL_SIZE: "${PGBOUNCER_DEFAULT_POOL_SIZE:-20}"
+      PGBOUNCER_MIN_POOL_SIZE:     "${PGBOUNCER_MIN_POOL_SIZE:-5}"
+      PGBOUNCER_RESERVE_POOL_SIZE: "${PGBOUNCER_RESERVE_POOL_SIZE:-10}"
+      PGBOUNCER_RESERVE_POOL_TIMEOUT: "${PGBOUNCER_RESERVE_POOL_TIMEOUT:-3}"
+      # Auth: md5 matches the default PostgreSQL password hashing for Docker containers.
+      # Switch to scram-sha-256 once pg_hba.conf is updated per PRD §3.1 (Sprint F).
+      PGBOUNCER_AUTH_TYPE:         md5
+      # Ignore these startup parameters (sent by psycopg2 / SQLAlchemy).
+      # Without this, pgBouncer rejects connections in transaction mode.
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+      # Admin console access (for pgbouncer SHOW POOLS, SHOW STATS, etc.)
+      PGBOUNCER_ADMIN_USERS:       ${DB_USER:-hsi_user}
+      PGBOUNCER_STATS_USERS:       ${DB_USER:-hsi_user}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hsi_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U ${DB_USER:-hsi_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── Redis 7 (rate limiting, session metadata) ──────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: hsi_redis
@@ -41,13 +89,19 @@ services:
     restart: unless-stopped
 
   # ── FastAPI Backend ────────────────────────────────────────────────────────
+  #  DATABASE_URL now routes through pgBouncer (port 6432) instead of
+  #  connecting directly to PostgreSQL (port 5432).
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: hsi_backend
     environment:
-      DATABASE_URL: "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@db:5432/${DB_NAME:-hsi_portal}"
+      # Runtime API traffic → pgBouncer → PostgreSQL (transaction pool)
+      DATABASE_URL:       "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@pgbouncer:6432/${DB_NAME:-hsi_portal}"
+      # Admin operations (DELETE, schema checks) — also via pgBouncer.
+      # In Sprint F replace hsi_user with the dedicated hsi_admin role.
+      DATABASE_ADMIN_URL: "postgresql://${DB_USER:-hsi_user}:${DB_PASSWORD:-hsi_password123}@pgbouncer:6432/${DB_NAME:-hsi_portal}"
       JWT_SECRET:         ${JWT_SECRET:-change-me-to-a-random-32-char-string}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-to-a-different-secret}
       ADMIN_EMAIL:        ${ADMIN_EMAIL:-admin@hitachi-systems.com}
@@ -64,14 +118,16 @@ services:
       OTP_MAX_ATTEMPTS:   ${OTP_MAX_ATTEMPTS:-3}
       REDIS_URL:          ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS:       ${CORS_ORIGINS:-*}
-      AWS_REGION:         ${AWS_REGION:-us-east-1}
+      AWS_REGION:         ${AWS_REGION:-ap-south-1}
       AWS_ACCESS_KEY_ID:  ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       SES_SENDER_EMAIL:   ${SES_SENDER_EMAIL:-noreply@hitachi-systems.com}
-      SES_SENDER_NAME:    ${SES_SENDER_NAME:-Hitachi Systems}
+      SES_SENDER_NAME:    ${SES_SENDER_NAME:-HSI Enterprise Platform}
+      UVICORN_WORKERS:    ${UVICORN_WORKERS:-2}
+      UVICORN_LOG_LEVEL:  ${UVICORN_LOG_LEVEL:-info}
       SKIP_SEED_ON_IMPORT: "1"   # seeding happens in entrypoint.sh → seed.py
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy

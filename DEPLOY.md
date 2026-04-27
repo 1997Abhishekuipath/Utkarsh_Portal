@@ -13,21 +13,30 @@ One-click Docker deploy on a Linux host. ~5 minutes from clone to live.
 
 ## Architecture
 
-Five containers wired up by `docker-compose.yml`:
+Six containers wired up by `docker-compose.yml`:
 
 ```
                 ┌────── 80, 443 ──────┐
                 │                     │
 [ Internet ]──► nginx (TLS terminator, rate-limit, security headers)
                 │   │
-                │   ├──► /api/*    →  backend  (FastAPI + uvicorn, port 8001)
-                │   ├──► /api/ws   →  backend  (WebSocket — Sprint C live-sync)
-                │   └──► /*        →  frontend (nginx serving CRA build, port 80)
+                │   ├──► /api/*    →  backend    (FastAPI + uvicorn, port 8001)
+                │   ├──► /api/ws   →  backend    (WebSocket — Sprint C live-sync)
+                │   └──► /*        →  frontend   (nginx serving CRA build, port 80)
                 │
-                ├── backend ──► db    (PostgreSQL 16, persistent volume)
-                ├── backend ──► redis (Redis 7, AOF, persistent volume)
-                └── backend ──► AWS SES (OTP email delivery, optional)
+                ├── backend ──► pgbouncer ──► db   (transaction-mode pooling, port 6432→5432)
+                ├── backend ──► redis             (Redis 7, AOF, persistent volume)
+                └── backend ──► AWS SES           (OTP email delivery, optional)
 ```
+
+| Container    | Image                      | Purpose                                       |
+|-------------|---------------------------|-----------------------------------------------|
+| `db`         | postgres:16-alpine         | PostgreSQL 16 — primary data store            |
+| `pgbouncer`  | bitnami/pgbouncer:1.22     | Connection pooler (500 client → 20 server)    |
+| `redis`      | redis:7-alpine             | Rate limiting + session metadata              |
+| `backend`    | local build (Python 3.11)  | FastAPI API server                            |
+| `frontend`   | local build (Node 20/Nginx)| React SPA                                     |
+| `nginx`      | nginx:1.25-alpine          | TLS terminator + reverse proxy                |
 
 Volumes: `postgres_data`, `redis_data` — persist across `./setup.sh down/up`.
 
@@ -56,13 +65,21 @@ You'll see a banner with the live URL and admin credentials. Done.
 
 ```bash
 ./setup.sh status     # show running services
-./setup.sh logs       # tail logs from all 5 services
+./setup.sh logs       # tail logs from all 6 services
 ./setup.sh restart    # restart the stack (keeps data volumes)
 ./setup.sh down       # stop & remove containers (keeps data volumes)
 ./setup.sh            # bring everything back up
 
 # Re-seed users + content (idempotent — safe to run anytime)
 docker compose exec backend python seed.py
+
+# pgBouncer pool monitoring
+docker compose exec pgbouncer psql -p 6432 -U hsi_user pgbouncer -c "SHOW POOLS;"
+docker compose exec pgbouncer psql -p 6432 -U hsi_user pgbouncer -c "SHOW STATS;"
+docker compose exec pgbouncer psql -p 6432 -U hsi_user pgbouncer -c "SHOW CLIENTS;"
+
+# Direct PostgreSQL access (bypasses pgBouncer — for migrations, admin tasks)
+docker compose exec db psql -U hsi_user -d hsi_portal
 ```
 
 ## Email / MFA (AWS SES)
@@ -146,6 +163,15 @@ The backend Dockerfile must `COPY services/ ./services/`. Already fixed in the c
 
 **`subscribers_notified: 0` after admin Publish All**
 Either no client tabs are open, or your reverse proxy is stripping the `Upgrade` header. The shipped `docker/nginx/nginx.conf` handles this correctly via the `/api/ws` location block; if you're behind another proxy (Cloudflare, ALB, etc.) ensure WebSocket upgrades are allowed on `/api/ws`.
+
+**pgBouncer connection errors (`server login failed` / `ERROR pooler error`)**
+pgBouncer uses `md5` auth by default. Verify that PostgreSQL `pg_hba.conf` allows `md5` authentication from the pgBouncer container. If you've switched pg_hba.conf to `scram-sha-256` (Sprint F hardening), update `PGBOUNCER_AUTH_TYPE=scram-sha-256` in docker-compose.yml.
+
+**SQLAlchemy error: `unsupported startup parameter: extra_float_digits`**
+Ensure `PGBOUNCER_IGNORE_STARTUP_PARAMETERS=extra_float_digits,search_path` is set on the pgBouncer service (already set in the shipped compose file). Restart pgBouncer: `docker compose restart pgbouncer`.
+
+**`PREPARE` / prepared statement errors in pgBouncer transaction mode**
+Transaction-mode pooling disables server-side prepared statements. The FastAPI backend is configured correctly (SQLAlchemy uses implicit parameters via psycopg2 — no explicit `PREPARE` calls). If you add raw SQL with explicit `PREPARE`, switch those queries to parameterised `execute()` calls.
 
 **`connection reset` / 502 on login**
 Check `./setup.sh logs` for backend startup errors. The most common cause is missing env vars (`JWT_SECRET` left blank, etc.) — run preflight again with `./setup.sh`.

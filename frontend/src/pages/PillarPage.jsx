@@ -65,9 +65,26 @@ export default function PillarPage() {
         )}
 
         {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-[#CC0000] border-t-transparent rounded-full animate-spin" />
-          </div>
+          <>
+            <section data-testid="pillar-loading-skeleton">
+              <div className="h-3 w-40 bg-[#E2E8F0] rounded mb-4 animate-pulse" />
+              <div className="h-44 w-full bg-[#E2E8F0] rounded-2xl animate-pulse" />
+            </section>
+            <section>
+              <div className="h-3 w-32 bg-[#E2E8F0] rounded mb-4 animate-pulse" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                    <div className="h-20 bg-[#E2E8F0] animate-pulse" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-3 w-3/4 bg-[#E2E8F0] rounded animate-pulse" />
+                      <div className="h-2 w-1/2 bg-[#F1F5F9] rounded animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
         )}
 
         {!loading && data && (

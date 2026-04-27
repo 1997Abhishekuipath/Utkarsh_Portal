@@ -193,6 +193,7 @@ class PillarDB(Base):
     slug          = Column(String, unique=True, nullable=False, index=True)  # customer|innovator|employee|shareholder
     name          = Column(String, nullable=False)
     tagline       = Column(String, nullable=True)
+    description   = Column(String, nullable=True)
     gradient_from = Column(String, nullable=False, default='#CC0000')
     gradient_to   = Column(String, nullable=False, default='#7A0000')
     icon_name     = Column(String, nullable=True)              # lucide-react icon name
@@ -583,6 +584,10 @@ def _ensure_edm_tag_columns():
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                         WHERE table_name='motivational_quotes' AND column_name='source') THEN
             ALTER TABLE motivational_quotes ADD COLUMN source VARCHAR;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name='pillars' AND column_name='description') THEN
+            ALTER TABLE pillars ADD COLUMN description VARCHAR;
         END IF;
     END$$;
     """
@@ -1800,6 +1805,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 def _pillar_to_dict(p: PillarDB) -> dict:
     return {
         'id': p.id, 'slug': p.slug, 'name': p.name, 'tagline': p.tagline,
+        'description': getattr(p, 'description', None),
         'gradient_from': p.gradient_from, 'gradient_to': p.gradient_to,
         'icon_name': p.icon_name, 'position': p.position,
         'is_published': p.is_published,

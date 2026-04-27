@@ -79,7 +79,7 @@ function BarRow({ label, pct, color = "#C8281E" }) {
 }
 
 /* ─── Ghost / Red / Green buttons ─── */
-function Btn({ children, onClick, variant = "ghost", size = "sm", className = "", disabled, type = "button" }) {
+function Btn({ children, onClick, variant = "ghost", size = "sm", className = "", disabled, type = "button", "data-testid": testId }) {
   const base = "inline-flex items-center gap-1.5 font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50";
   const sizes = { sm: "text-[11px] px-2.5 py-1", md: "text-xs px-4 py-2", lg: "text-sm px-5 py-2.5" };
   const variants = {
@@ -88,7 +88,7 @@ function Btn({ children, onClick, variant = "ghost", size = "sm", className = ""
     green: "bg-[#1A8A4A] text-white hover:bg-[#137038] border border-transparent",
     danger: "bg-transparent border border-[#C8281E] text-[#E8453A] hover:bg-[#C8281E] hover:text-white",
   };
-  return <button type={type} onClick={onClick} disabled={disabled} className={cls(base, sizes[size], variants[variant], className)}>{children}</button>;
+  return <button type={type} data-testid={testId} onClick={onClick} disabled={disabled} className={cls(base, sizes[size], variants[variant], className)}>{children}</button>;
 }
 
 /* ─── Input / Textarea / Select ─── */
@@ -104,8 +104,10 @@ const inputCls = "w-full bg-[#201618] border border-[#4A4040] text-white text-xs
 
 /* ─── Sidebar nav item ─── */
 function NavItem({ icon: Icon, label, active, badge, onClick }) {
+  const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
     <button onClick={onClick}
+      data-testid={`nav-${id}`}
       className={cls(
         "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all text-[12px] font-semibold",
         active ? "bg-[#C8281E] text-white" : "text-[#8A8080] hover:text-white hover:bg-[#201618]"
@@ -337,7 +339,7 @@ function HomeEDMPage({ authHeader, toast }) {
 
   return (
     <Card>
-      <CardTop title="📢 Home EDM Carousel" right={<Btn variant="red" onClick={add}><Plus size={12} /> Add Slide</Btn>} />
+      <CardTop title="📢 Home EDM Carousel" right={<Btn variant="red" onClick={add} data-testid="edm-add-slide-btn"><Plus size={12} /> Add Slide</Btn>} />
       <CardBody>
         <div className="text-[11px] text-[#8A8080] mb-4">Changes publish to both <strong className="text-white">Employee Web</strong> and <strong className="text-white">Mobile App</strong>.</div>
         {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
@@ -430,7 +432,7 @@ function QuotesPage({ authHeader, toast }) {
 
   return (
     <Card>
-      <CardTop title="💡 Motivational Quotes" right={<Btn variant="red" onClick={add}><Plus size={12} /> Add Quote</Btn>} />
+      <CardTop title="💡 Motivational Quotes" right={<Btn variant="red" onClick={add} data-testid="quote-add-btn"><Plus size={12} /> Add Quote</Btn>} />
       <CardBody>
         <div className="text-[11px] text-[#8A8080] mb-4">Quotes rotate every 30 seconds on home screen and profile.</div>
         {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
@@ -587,7 +589,7 @@ function IconManagerPage({ authHeader, toast }) {
         ))}
       </div>
       <Card>
-        <CardTop title={`🔧 ${pillarName} — Icons & Apps`} right={<Btn variant="red" onClick={add}><Plus size={12} /> Add App</Btn>} />
+        <CardTop title={`🔧 ${pillarName} — Icons & Apps`} right={<Btn variant="red" onClick={add} data-testid="icon-add-app-btn"><Plus size={12} /> Add App</Btn>} />
         <CardBody>
           <div className="text-[11px] text-[#8A8080] mb-4">Name · Lucide icon · Route · Badge (HOT/NEW).</div>
           {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div> : (
@@ -675,7 +677,7 @@ function PillarEDMPage({ authHeader, toast }) {
         ))}
       </div>
       <Card>
-        <CardTop title={`🗂️ ${pillarName} — EDM Slides`} right={<Btn variant="red" onClick={add}><Plus size={12} /> Add Slide</Btn>} />
+        <CardTop title={`🗂️ ${pillarName} — EDM Slides`} right={<Btn variant="red" onClick={add} data-testid="pillar-edm-add-btn"><Plus size={12} /> Add Slide</Btn>} />
         <CardBody>
           {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
             : slides.length === 0 ? <div className="text-center py-12 text-[#4A4040] text-sm">No slides for this pillar — click Add Slide</div>
@@ -953,6 +955,7 @@ export default function AdminConsolePage() {
         {/* Publish button */}
         <div className="p-3 border-t border-[#2A1C1E]">
           <button onClick={publish}
+            data-testid="publish-all-sidebar-btn"
             className="w-full bg-[#C8281E] hover:bg-[#9B1A12] text-white font-['Barlow_Condensed',sans-serif] font-black text-sm tracking-wider py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
             <Zap size={14} />  PUBLISH ALL
           </button>
@@ -981,6 +984,7 @@ export default function AdminConsolePage() {
               <span className="text-[11px] text-[#8A8080]">All changes saved · Last published <span className="text-[#C0B8B8]">{pubTime}</span></span>
             </div>
             <button onClick={publish}
+              data-testid="publish-all-topbar-btn"
               className="bg-[#C8281E] hover:bg-[#9B1A12] text-white text-[11px] font-bold px-4 py-1.5 rounded-lg transition-all flex items-center gap-1.5">
               <Zap size={12} /> Publish All Changes
             </button>

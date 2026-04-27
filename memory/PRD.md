@@ -195,3 +195,22 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - Node.js stack — superseded by ADR-001
 - MinIO — deferred until needed
 
+---
+
+## Changelog (Sprint H — Admin Console hardening · Apr 2026)
+- [x] Admin Console (`/admin/console`) end-to-end edits now persist for **EDM Slides** (incl. `tag` / `tag_color`), **Quotes** (`text` / `source`), **Pillars** (incl. **description**, gradient, tagline), and **Pillar Icons** (name, lucide_icon, route, badge).
+- [x] All 4 admin PUT endpoints use `exclude_unset=True` PATCH semantics — partial payloads no longer overwrite unspecified fields.
+- [x] Added `description` column to `pillars` (raw-SQL idempotent migration in `_ensure_edm_tag_columns`) and included it in `_pillar_to_dict` so values rehydrate on reload.
+- [x] Replaced fragile `setTimeout` reload hack in Icon Manager with `useCallback loadIcons(activePillar)` — Add App now appears immediately.
+- [x] Added `data-testid` to admin sidebar nav, Add buttons, and Publish-All buttons for stable Playwright selectors.
+- [x] Pillar pages now show a multi-card skeleton while loading (was a tiny single spinner).
+- [x] Frontend QA: 12/13 admin-console flows passing (final iteration_5).
+
+## Outstanding (P1)
+- [ ] Add `data-testid` to per-row inputs in the admin console (badge buttons, individual edit fields).
+- [ ] Investigate the 2× 401 console errors observed on first `/admin/console` load (likely a `useEffect` race or an unauthed widget firing pre-token).
+- [ ] Sample seed data for Analytics charts so empty-state doesn't show "No data yet".
+- [ ] Tooltips on Admin Quick Links.
+- [ ] Refactor `server.py` (>3,400 lines) into `/app/backend/routes/` and `/app/backend/models/` once next major feature lands.
+- [ ] Wrap admin save handlers with `if (!r.ok)` so failed PUTs surface a red "Save failed" toast instead of silent success.
+

@@ -538,6 +538,16 @@ function IconManagerPage({ authHeader, toast }) {
   const [icons, setIcons] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const loadIcons = useCallback(async (pillarId) => {
+    if (!pillarId) return;
+    setLoading(true);
+    try {
+      const d = await fetch(`${API}/admin/pillar-icons?pillar_id=${pillarId}`, { headers: authHeader() }).then(r => r.json());
+      setIcons(Array.isArray(d) ? d : []);
+    } catch { setIcons([]); }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     fetch(`${API}/admin/pillars`, { headers: authHeader() }).then(r => r.json()).then(d => {
       setPillars(Array.isArray(d) ? d : []);
@@ -545,21 +555,13 @@ function IconManagerPage({ authHeader, toast }) {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!activePillar) return;
-    setLoading(true);
-    fetch(`${API}/admin/pillar-icons?pillar_id=${activePillar}`, { headers: authHeader() }).then(r => r.json()).then(d => {
-      setIcons(Array.isArray(d) ? d : []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [activePillar]);
+  useEffect(() => { loadIcons(activePillar); }, [activePillar, loadIcons]);
 
   const add = async () => {
     if (!activePillar) return;
     await fetch(`${API}/admin/pillar-icons`, { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify({ pillar_id: activePillar, name: "New App", lucide_icon: "Box", route: "/apps/new" }) });
     toast("App added", true);
-    setActivePillar(ap => { const x = ap; setTimeout(() => setActivePillar(x), 0); return null; });
-    setTimeout(() => setActivePillar(activePillar), 50);
+    loadIcons(activePillar);
   };
   const del = async (id) => {
     await fetch(`${API}/admin/pillar-icons/${id}`, { method: "DELETE", headers: authHeader() });

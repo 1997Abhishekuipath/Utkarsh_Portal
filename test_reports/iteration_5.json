@@ -1,0 +1,75 @@
+{
+  "summary": "Frontend e2e verification of HSI Admin Console (/admin/console) for persistence of EDM Slides, Motivational Quotes, Pillar Manager, and Icon & App Manager — plus the previously broken 'Add App immediate refresh' fix. 8/9 admin-console persistence flows pass; 1 backend regression bug found (Pillar description field stripped from API response). All 9 sidebar nav items render without crashes. /admin/approvals loads cleanly. Public reflection on /pillar/customer confirmed (TEST_APP_xxx visible).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/admin/pillars/{id} & GET /api/admin/pillars",
+        "issue": "_pillar_to_dict() at backend/server.py:1800 does NOT include the 'description' key, even though PillarPatchReq accepts it (line 664) and the PUT handler persists it to DB. Result: front-end Pillar Manager 'DESCRIPTION' input always reloads as empty — the value IS saved in DB but the GET response strips it, so React's defaultValue resets to ''. Fix: add `'description': p.description,` to the dict returned by _pillar_to_dict (between 'tagline' and 'gradient_from')."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdminConsolePage entire file (1006 lines)",
+        "issue": "Zero data-testid attributes across the whole admin console — nav items, Add buttons, edit inputs, color pickers, badge buttons, Publish All, delete buttons all rely on text content / placeholders. Tests are forced to use brittle text selectors. Add data-testid to: sidebar nav items (`nav-{id}`), 'Publish All Changes', 'Add Slide'/'Add Quote'/'Add App', each row/card, and the inputs.",
+        "selector": "n/a (all)",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Pillar Manager → reload",
+        "issue": "Description input always blank after reload despite PUT 200 OK (root cause is backend serializer — see backend_issues.minor[0]).",
+        "affected_selectors": ["Pillar Manager DESCRIPTION input"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_results_detailed": {
+    "login_flow": "PASS — demo button fills creds, OTP auto-pre-filled (000000), two-step submit lands on /",
+    "sidebar_nav_9_items": "PASS — Dashboard, User Approvals, Home EDM Slides, Motivational Quotes, Pillar Manager, Icon & App Manager, Pillar EDM Slides, Push Notifications, Analytics all render without runtime errors",
+    "edm_tag_edit_persistence": "PASS — set TEST_TAG_xxx, reloaded page, value preserved",
+    "quotes_edit_persistence": "PASS — set TEST_QUOTE_xxx as source, reloaded, value preserved",
+    "quotes_add_immediate": "PASS — Add Quote increased list 6→7 instantly",
+    "pillar_tagline_persistence": "PASS (verified TAGLINE inputs retain values across reload — original Customer tagline intact)",
+    "pillar_description_persistence": "FAIL — value not returned by GET (backend serializer bug — see backend_issues)",
+    "icon_add_app_immediate_refresh": "PASS — cards 6→7 within 1.2s; the prior setTimeout hack is gone, useCallback loadIcons works",
+    "icon_name_persistence": "PASS — TEST_APP_xxx survived reload",
+    "icon_badge_click": "PASS — 'hot' badge selection saved (visual selection updated)",
+    "publish_all_toast": "PASS — green '✅ All changes published!' toast visible after click",
+    "admin_approvals_route": "PASS — /admin/approvals renders 'Approval Queue' header, no console errors",
+    "public_pillar_reflection": "PASS — /pillar/customer DOM contains TEST_APP_xxx (icon edit reflects to public page)",
+    "public_home_reflection": "INCONCLUSIVE — TEST_TAG_/TEST_QUOTE_ tokens not found in / DOM snapshot, but home renders only the currently-active carousel slide / quote (rotating), so absent text doesn't prove non-persistence; admin-side reload already proved persistence."
+  },
+  "console_errors_observed": [
+    "2× '401 Failed to load resource' on initial /admin/console load — likely a polling endpoint hitting before token attached or a public widget; non-blocking, all subsequent calls succeeded with admin JWT"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "BACKEND FIX (1-line): server.py:1800 _pillar_to_dict — add `'description': p.description,` to the returned dict so Pillar Manager DESCRIPTION input rehydrates correctly on reload.",
+    "FRONTEND ENHANCEMENT: add data-testid attributes to AdminConsolePage interactive elements (nav items, Add/Delete buttons, inputs, Publish All) for stable Playwright selectors.",
+    "Investigate the 2× 401 console errors on initial /admin/console load — identify which endpoint is hit before auth header is ready (likely a useEffect race in DashboardPage)."
+  ],
+  "critical_code_review_comments": [
+    "AdminConsolePage.jsx is 1006 lines with 8 sub-page components inline — exceeds the 700-line guideline; split into /pages/admin/{HomeEDMPage,QuotesPage,PillarManagerPage,IconManagerPage,...}.jsx.",
+    "Five sub-pages duplicate the same fetch/load/update/delete pattern (HomeEDMPage, QuotesPage, IconManagerPage, PillarEDMPage, PillarManagerPage) — extract a `useAdminResource(endpoint)` hook to remove ~150 lines of DRY violation.",
+    "IconManagerPage.del (line 569) uses `setIcons(icons.filter(...))` which closes over a stale `icons` reference; convert to functional updater `setIcons(prev => prev.filter(...))` to match the optimistic-update pattern used elsewhere.",
+    "Update functions (update / del / add) silently swallow non-2xx responses — `await fetch(...).then(r => r.json())` does not check `r.ok`. A failed PUT shows the same 'Saved' toast as success. Wrap with `if (!r.ok) { toast('Save failed', false); return; }`.",
+    "_pillar_to_dict omits description (caused the visible bug); this whole class of bug would be prevented by reusing a single Pydantic response model with `from_attributes = True` instead of hand-rolled dicts."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only request; no pytest run this iteration)",
+    "frontend": "92% (12/13 admin-console flows passing; only Pillar description field fails — root cause backend)"
+  },
+  "test_credentials": "Admin: admin@hitachi-systems.com / Admin@123 — DEMO_OTP=000000 (pre-filled by LoginPage when demo tile clicked).",
+  "seed_data_creation": "Created during test: 1 EDM tag override (TEST_TAG_<ts>), 1 quote source override (TEST_QUOTE_<ts>), 1 new quote, 1 new pillar icon (TEST_APP_<ts> on Customer pillar). Test data was not auto-cleaned — main agent or next testing agent may want to delete entries with TEST_ prefix via DELETE endpoints.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login flow: click 'admin@hitachi-systems.com' demo button → click submit (creds form) → click submit again (OTP form, code is auto-filled to 000000) → lands on /. Then nav to /admin/console manually. Sidebar buttons match by text; no data-testid yet. Pillar Manager has 4 cards × 6 inputs each (tagline, description, gradient_from text+color, gradient_to text+color); the 'description' field round-trip is broken backend-side. Icon Manager Add App now refreshes immediately (verified count 6→7 within 1.2s) — previous setTimeout hack confirmed gone. Public reflection: /pillar/customer DOM contains app names; home / only renders one active EDM slide + one active quote at a time, so HTML scan for TEST_TAG_/TEST_QUOTE_ may be empty even though admin-side persistence is confirmed. Two unexplained 401s appear in console on first admin-console load — investigate.",
+  "rca_of_the_issue": {
+    "pillar_description_not_persisting": "Front-end PillarManagerPage (AdminConsolePage.jsx:498) renders <input defaultValue={p.description} onBlur={e => update(p.id, 'description', e.target.value)} />. The PUT goes through (PillarPatchReq accepts description, server.py:664; handler persists at server.py:1933). However the GET /admin/pillars response is built by _pillar_to_dict (server.py:1800) which lists only id/slug/name/tagline/gradient_from/gradient_to/icon_name/position/is_published/updated_at — `description` is NOT in the returned dict. So when the page reloads, p.description is undefined and React defaultValue rehydrates to empty string. The DB row is correctly updated (verifiable by inspecting Postgres directly or by the audit log entry pillar_update). Fix: add `'description': p.description,` to the literal at server.py:1800. Same pattern bit user_to_dict in iteration_4 (phone / date_of_birth missing) — recommend a unified fix using Pydantic response_model serialization."
+  }
+}

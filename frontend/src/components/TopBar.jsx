@@ -1,24 +1,68 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Building2, Settings, LogOut, ChevronRight } from "lucide-react";
+import { Building2, Settings, LogOut, ChevronRight, Bell } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
-/**
- * Reusable HSI red top bar — branding, mini-stats, user menu.
- * Used by HomePage and PillarPage.
- *
- * stats: optional [{value, label}]   — shown right of the brand
- * crumbs: optional [{label, to?}]    — breadcrumbs on the second row
- * children: optional hero content    — rendered inside the red hero band
- */
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
+
 export default function TopBar({ stats = [], crumbs = null, children = null }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [notifs, setNotifs] = useState([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(false);
   const firstName = user?.name?.split(" ")[0] || "User";
   const isAdmin = user && (user.role === "admin" || user.role === "super_admin");
 
   const doLogout = async () => { await logout(); navigate("/login"); };
+
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND}/api/notifications/unread-count`, { credentials: "include" });
+      if (res.ok) { const d = await res.json(); setUnread(d.count || 0); }
+    } catch { /* silent */ }
+  }, []);
+
+  const fetchNotifs = async () => {
+    if (loadingNotifs) return;
+    setLoadingNotifs(true);
+    try {
+      const res = await fetch(`${BACKEND}/api/notifications?limit=10`, { credentials: "include" });
+      if (res.ok) { const d = await res.json(); setNotifs(d.items || []); }
+    } catch { /* silent */ } finally { setLoadingNotifs(false); }
+  };
+
+  const markRead = async (id) => {
+    await fetch(`${BACKEND}/api/notifications/${id}/read`, { method: "PUT", credentials: "include" });
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    setUnread(prev => Math.max(0, prev - 1));
+  };
+
+  const markAllRead = async () => {
+    await fetch(`${BACKEND}/api/notifications/read-all`, { method: "PUT", credentials: "include" });
+    setNotifs(prev => prev.map(n => ({ ...n, is_read: true })));
+    setUnread(0);
+  };
+
+  useEffect(() => {
+    if (user) { fetchUnread(); const t = setInterval(fetchUnread, 30000); return () => clearInterval(t); }
+  }, [user, fetchUnread]);
+
+  const toggleNotif = () => {
+    const next = !notifOpen;
+    setNotifOpen(next);
+    setOpen(false);
+    if (next) fetchNotifs();
+  };
+
+  const CATEGORY_COLORS = {
+    birthday: "bg-pink-100 text-pink-700", approved: "bg-green-100 text-green-700",
+    replication: "bg-blue-100 text-blue-700", announcement: "bg-gray-100 text-gray-700",
+    incentive: "bg-amber-100 text-amber-700", award: "bg-purple-100 text-purple-700",
+    new_practice: "bg-teal-100 text-teal-700", reminder: "bg-orange-100 text-orange-700",
+  };
 
   return (
     <div className="bg-[#CC0000] relative overflow-hidden">
@@ -45,8 +89,60 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
                 <div className="text-white/60 text-[9px] tracking-widest mt-0.5">{s.label}</div>
               </div>
             ))}
-            <div className="relative ml-2">
-              <button data-testid="user-menu-button" onClick={() => setOpen(!open)}
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <button onClick={toggleNotif}
+                className="relative flex items-center justify-center w-9 h-9 bg-white/20 hover:bg-white/30 rounded-lg transition-colors">
+                <Bell size={16} className="text-white" />
+                {unread > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-yellow-400 text-black text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 w-96 z-50 max-h-[480px] flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <span className="text-sm font-semibold text-gray-800">Notifications</span>
+                    {unread > 0 && (
+                      <button onClick={markAllRead} className="text-xs text-[#CC0000] hover:underline">Mark all read</button>
+                    )}
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {loadingNotifs && <div className="text-center py-6 text-gray-400 text-sm">Loading…</div>}
+                    {!loadingNotifs && notifs.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 text-sm">No notifications yet</div>
+                    )}
+                    {notifs.map(n => (
+                      <div key={n.id} onClick={() => !n.is_read && markRead(n.id)}
+                        className={`flex gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${!n.is_read ? "bg-red-50" : ""}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[n.category] || "bg-gray-100 text-gray-600"}`}>
+                              {n.category || "info"}
+                            </span>
+                            {n.is_urgent && <span className="text-[10px] text-red-600 font-bold">URGENT</span>}
+                            {!n.is_read && <div className="w-2 h-2 rounded-full bg-[#CC0000] mt-1 flex-shrink-0" />}
+                          </div>
+                          <div className="text-xs font-semibold text-gray-800 mt-1 truncate">{n.title}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{n.body}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-4 py-2 border-t border-gray-100">
+                    <Link to="/notifications" onClick={() => setNotifOpen(false)}
+                      className="block text-center text-xs text-[#CC0000] hover:underline py-1">
+                      View all notifications →
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="relative ml-1">
+              <button data-testid="user-menu-button" onClick={() => { setOpen(!open); setNotifOpen(false); }}
                 className="flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-lg px-3 py-1.5 transition-colors">
                 <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center">
                   <span className="text-white text-[10px] font-bold">{user?.name?.[0]}</span>
@@ -59,8 +155,16 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
                     <div className="text-sm font-semibold text-[#0F172A]">{user?.name}</div>
                     <div className="text-xs text-[#64748B] capitalize">{user?.role?.replace("_", " ")}</div>
                   </div>
+                  <Link to="/practices" onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
+                    <span>📚</span><span>Best Practices</span>
+                  </Link>
+                  <Link to="/my-activity" onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
+                    <span>⭐</span><span>My XP & Activity</span>
+                  </Link>
                   {isAdmin && (
-                    <Link to="/admin" data-testid="admin-panel-link"
+                    <Link to="/admin" data-testid="admin-panel-link" onClick={() => setOpen(false)}
                       className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#0F172A] hover:bg-[#F8FAFC] transition-colors">
                       <Settings size={15} /><span>Admin Panel</span>
                     </Link>

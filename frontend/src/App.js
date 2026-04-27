@@ -11,6 +11,10 @@ import AdminPage from "./pages/AdminPage";
 import AdminContentPage from "./pages/AdminContentPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
+import PracticesPage from "./pages/PracticesPage";
+import MyActivityPage from "./pages/MyActivityPage";
+import NotificationsPage from "./pages/NotificationsPage";
+import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 
 const ProtectedRoute = ({ children, requiredRoles }) => {
   const { user, loading } = useAuth();
@@ -42,8 +46,15 @@ function App() {
           <Route path="/apps/nps-csat" element={<ProtectedRoute><NPSCsatPage /></ProtectedRoute>} />
           <Route path="/apps/survey-builder" element={<ProtectedRoute><ActionIntelligencePage /></ProtectedRoute>} />
           <Route path="/apps/:appId" element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
+          {/* Sprint D — XP & Best Practices */}
+          <Route path="/practices" element={<ProtectedRoute><PracticesPage /></ProtectedRoute>} />
+          <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage /></ProtectedRoute>} />
+          {/* Sprint E — Notifications */}
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+          {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPage /></ProtectedRoute>} />
           <Route path="/admin/content" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminContentPage /></ProtectedRoute>} />
+          <Route path="/admin/notifications" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminNotificationsPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

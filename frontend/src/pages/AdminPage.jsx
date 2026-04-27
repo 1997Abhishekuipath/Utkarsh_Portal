@@ -74,6 +74,10 @@ export default function AdminPage() {
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">
               <ChevronDown size={13} className="rotate-[-90deg]" /><span>Content</span>
             </Link>
+            <Link to="/admin/notifications"
+              className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">
+              <span>🔔</span><span>Notifications</span>
+            </Link>
             <Link to="/" data-testid="back-to-dashboard-btn"
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">
               <ArrowLeft size={13} /><span>Dashboard</span>

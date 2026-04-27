@@ -233,6 +233,180 @@ class PublishHistoryDB(Base):
     published_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
 
+# ── Sprint D — XP & Incentive Engine Models ──────────────────────────────────
+
+class BestPracticeDB(Base):
+    __tablename__ = 'best_practices'
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    author_id      = Column(String, ForeignKey('users.id'), nullable=False)
+    title          = Column(String, nullable=False)
+    summary        = Column(String, nullable=False)
+    why_content    = Column(String, nullable=True)
+    how_content    = Column(String, nullable=True)
+    what_content   = Column(String, nullable=True)
+    impact_content = Column(String, nullable=True)
+    difficulty     = Column(String, default='medium')
+    pillar         = Column(String, nullable=True)
+    art_tag        = Column(String, nullable=True)
+    tags           = Column(ARRAY(String), default=list)
+    status         = Column(String, default='pending')
+    reviewer_id    = Column(String, ForeignKey('users.id'), nullable=True)
+    reviewed_at    = Column(DateTime(timezone=True), nullable=True)
+    reject_reason  = Column(String, nullable=True)
+    xp_awarded     = Column(Integer, default=0)
+    replication_cnt= Column(Integer, default=0)
+    is_featured    = Column(Boolean, default=False)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        CheckConstraint("difficulty IN ('easy','medium','hard','expert')", name='chk_bp_difficulty'),
+        CheckConstraint("pillar IN ('customer','innovator','employee','shareholder')", name='chk_bp_pillar'),
+        CheckConstraint("art_tag IN ('accelerate','retain','transform')", name='chk_bp_art'),
+        CheckConstraint("status IN ('draft','pending','approved','rejected')", name='chk_bp_status'),
+    )
+
+
+class ReplicationDB(Base):
+    __tablename__ = 'replications'
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    practice_id    = Column(String, ForeignKey('best_practices.id'), nullable=False)
+    replicator_id  = Column(String, ForeignKey('users.id'), nullable=False)
+    client_name    = Column(String, nullable=False)
+    po_number      = Column(String, nullable=True)
+    po_value_inr   = Column(String, nullable=True)
+    deal_closed_at = Column(Date, nullable=True)
+    xp_awarded     = Column(Integer, default=0)
+    referral_xp    = Column(Integer, default=0)
+    status         = Column(String, default='pending')
+    approved_by    = Column(String, ForeignKey('users.id'), nullable=True)
+    approved_at    = Column(DateTime(timezone=True), nullable=True)
+    notes          = Column(String, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','approved','rejected')", name='chk_rep_status'),
+    )
+
+
+class XpLedgerDB(Base):
+    __tablename__ = 'xp_ledger'
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id      = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    xp_delta     = Column(Integer, nullable=False)
+    xp_balance   = Column(Integer, nullable=False)
+    source_type  = Column(String, nullable=False)
+    source_id    = Column(String, nullable=True)
+    art_multiplier = Column(String, default='1.00')
+    quarter      = Column(String, nullable=False, index=True)
+    description  = Column(String, nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('original_practice','replication','tech_day','certification',"
+            "'birthday','referral','seasonal_bonus','admin_adjustment')",
+            name='chk_xp_source'),
+    )
+
+
+class IncentiveCalcDB(Base):
+    __tablename__ = 'incentive_calculations'
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id         = Column(String, ForeignKey('users.id'), nullable=False)
+    quarter         = Column(String, nullable=False)
+    xp_original     = Column(Integer, default=0)
+    xp_replication  = Column(Integer, default=0)
+    xp_tech_day     = Column(Integer, default=0)
+    xp_other        = Column(Integer, default=0)
+    rate_original   = Column(String, default='50.00')
+    rate_replication= Column(String, default='75.00')
+    rate_tech_day   = Column(String, default='19.00')
+    amount_inr      = Column(String, nullable=True)
+    status          = Column(String, default='draft')
+    approved_by     = Column(String, ForeignKey('users.id'), nullable=True)
+    approved_at     = Column(DateTime(timezone=True), nullable=True)
+    payout_date     = Column(Date, nullable=True)
+    payroll_ref     = Column(String, nullable=True)
+    created_at      = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        CheckConstraint("status IN ('draft','approved','paid','on_hold')", name='chk_inc_status'),
+        Index('idx_inc_user_quarter', 'user_id', 'quarter', unique=True),
+    )
+
+
+class TechDayDB(Base):
+    __tablename__ = 'tech_days'
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    conductor_id   = Column(String, ForeignKey('users.id'), nullable=False)
+    title          = Column(String, nullable=False)
+    description    = Column(String, nullable=True)
+    client_name    = Column(String, nullable=True)
+    attendee_count = Column(Integer, default=0)
+    conducted_on   = Column(Date, nullable=False)
+    xp_awarded     = Column(Integer, default=0)
+    status         = Column(String, default='pending')
+    approved_by    = Column(String, ForeignKey('users.id'), nullable=True)
+    evidence_url   = Column(String, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','approved','rejected')", name='chk_td_status'),
+    )
+
+
+class CertificationDB(Base):
+    __tablename__ = 'certifications'
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id      = Column(String, ForeignKey('users.id'), nullable=False)
+    cert_name    = Column(String, nullable=False)
+    provider     = Column(String, nullable=True)
+    cert_id      = Column(String, nullable=True)
+    issued_on    = Column(Date, nullable=True)
+    expires_on   = Column(Date, nullable=True)
+    xp_awarded   = Column(Integer, default=50)
+    verified     = Column(Boolean, default=False)
+    evidence_url = Column(String, nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ── Sprint E — Notifications Models ──────────────────────────────────────────
+
+class NotificationDB(Base):
+    __tablename__ = 'notifications'
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title       = Column(String, nullable=False)
+    body        = Column(String, nullable=False)
+    category    = Column(String, nullable=True)
+    target_type = Column(String, default='all')
+    target_id   = Column(String, nullable=True)
+    is_urgent   = Column(Boolean, default=False)
+    deep_link   = Column(String, nullable=True)
+    sent_at     = Column(DateTime(timezone=True), nullable=True)
+    send_email  = Column(Boolean, default=False)
+    created_by  = Column(String, ForeignKey('users.id'), nullable=True)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('incentive','birthday','approved','replication','reminder',"
+            "'new_practice','award','announcement')",
+            name='chk_notif_category'),
+        CheckConstraint(
+            "target_type IN ('all','user','role','practice','department')",
+            name='chk_notif_target'),
+    )
+
+
+class UserNotificationDB(Base):
+    __tablename__ = 'user_notifications'
+    id              = Column(BigInteger, primary_key=True, autoincrement=True)
+    notification_id = Column(String, ForeignKey('notifications.id'), nullable=False)
+    user_id         = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    is_read         = Column(Boolean, default=False)
+    read_at         = Column(DateTime(timezone=True), nullable=True)
+    is_dismissed    = Column(Boolean, default=False)
+    delivered_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        Index('idx_un_user_notif', 'notification_id', 'user_id', unique=True),
+    )
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -363,6 +537,64 @@ class PublishReq(BaseModel):
     note: Optional[str] = None
 
 
+# ── Sprint D — XP & Incentive Schemas ────────────────────────────────────────
+class PracticeSubmitReq(BaseModel):
+    title: str
+    summary: str
+    why_content: Optional[str] = None
+    how_content: Optional[str] = None
+    what_content: Optional[str] = None
+    impact_content: Optional[str] = None
+    difficulty: str = 'medium'          # easy|medium|hard|expert
+    pillar: Optional[str] = None
+    art_tag: Optional[str] = None
+    tags: Optional[List[str]] = []
+    status: str = 'pending'             # draft → pending on submit
+
+
+class ReplicationSubmitReq(BaseModel):
+    practice_id: str
+    client_name: str
+    po_number: Optional[str] = None
+    po_value_inr: Optional[str] = None
+    deal_closed_at: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TechDaySubmitReq(BaseModel):
+    title: str
+    description: Optional[str] = None
+    client_name: Optional[str] = None
+    attendee_count: int = 0
+    conducted_on: str                   # ISO date string
+    evidence_url: Optional[str] = None
+
+
+class CertSubmitReq(BaseModel):
+    cert_name: str
+    provider: Optional[str] = None
+    cert_id: Optional[str] = None
+    issued_on: Optional[str] = None
+    expires_on: Optional[str] = None
+    evidence_url: Optional[str] = None
+
+
+class AdminPracticeActionReq(BaseModel):
+    reject_reason: Optional[str] = None
+
+
+# ── Sprint E — Notification Schemas ──────────────────────────────────────────
+class SendNotificationReq(BaseModel):
+    title: str
+    body: str
+    category: str = 'announcement'
+    target_type: str = 'all'            # all|user|role|practice|department
+    target_id: Optional[str] = None
+    is_urgent: bool = False
+    deep_link: Optional[str] = None
+    send_email: bool = False
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
@@ -472,6 +704,102 @@ def audit(db: Session, *, user_id: Optional[str], actor_email: Optional[str],
         ip_address=meta['ip'], user_agent=meta['ua'], details=details or {},
     ))
     db.commit()
+
+
+# ── XP Engine helpers ─────────────────────────────────────────────────────────
+XP_MATRIX = {
+    'original_practice': {'easy': 80, 'medium': 100, 'hard': 120, 'expert': 130},
+    'replication_no_po': {'easy': 0, 'medium': 90, 'hard': 120, 'expert': 150},
+    'replication_with_po': {'easy': 0, 'medium': 120, 'hard': 165, 'expert': 195},
+}
+ART_MULT    = {'accelerate': 1.2, 'retain': 1.0, 'transform': 1.5}
+INR_RATE    = {'original_practice': 50.0, 'replication': 75.0,
+               'replication_no_po': 60.0, 'tech_day': 19.0}
+CERT_XP     = 50
+BIRTHDAY_XP = 50
+REFERRAL_XP = 25
+
+
+def current_quarter() -> str:
+    now = datetime.now(timezone.utc)
+    q = (now.month - 1) // 3 + 1
+    return f"{now.year}-Q{q}"
+
+
+def calc_practice_xp(difficulty: str, art_tag: Optional[str]) -> tuple:
+    base = XP_MATRIX['original_practice'].get(difficulty or 'medium', 100)
+    mult = ART_MULT.get(art_tag or 'retain', 1.0)
+    return round(base * mult), mult
+
+
+def calc_replication_xp(difficulty: str, has_po: bool, art_tag: Optional[str]) -> tuple:
+    """Returns (replicator_xp, referral_xp, multiplier)"""
+    key = 'replication_with_po' if has_po else 'replication_no_po'
+    base = XP_MATRIX[key].get(difficulty or 'medium', 90)
+    mult = ART_MULT.get(art_tag or 'retain', 1.0)
+    return round(base * mult), REFERRAL_XP, mult
+
+
+def calc_tech_day_xp(attendee_count: int = 0) -> int:
+    return min(25 + attendee_count * 2, 75)
+
+
+def add_xp(db: Session, user_id: str, xp_delta: int, source_type: str,
+           source_id: Optional[str] = None, art_multiplier: float = 1.0,
+           quarter: Optional[str] = None, description: Optional[str] = None) -> int:
+    """Append to xp_ledger and sync user.xp_points. Returns new balance."""
+    last = (db.query(XpLedgerDB)
+            .filter(XpLedgerDB.user_id == user_id)
+            .order_by(XpLedgerDB.id.desc()).first())
+    prev_balance = last.xp_balance if last else 0
+    new_balance  = max(0, prev_balance + xp_delta)
+    db.add(XpLedgerDB(
+        user_id=user_id, xp_delta=xp_delta, xp_balance=new_balance,
+        source_type=source_type, source_id=source_id,
+        art_multiplier=str(art_multiplier),
+        quarter=quarter or current_quarter(),
+        description=description,
+    ))
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if user:
+        user.xp_points = new_balance
+    db.flush()
+    return new_balance
+
+
+def _dispatch_notification(db: Session, *, title: str, body: str, category: str,
+                           target_type: str = 'all', target_id: Optional[str] = None,
+                           is_urgent: bool = False, deep_link: Optional[str] = None,
+                           created_by: Optional[str] = None):
+    """Create notification + fan-out user_notification rows."""
+    notif = NotificationDB(
+        id=str(uuid.uuid4()), title=title, body=body, category=category,
+        target_type=target_type, target_id=target_id,
+        is_urgent=is_urgent, deep_link=deep_link,
+        sent_at=datetime.now(timezone.utc), created_by=created_by,
+    )
+    db.add(notif)
+    db.flush()
+    if target_type == 'all':
+        rids = [r for (r,) in db.query(UserDB.id).filter(UserDB.is_active == True).all()]  # noqa: E712
+    elif target_type == 'user' and target_id:
+        rids = [target_id]
+    elif target_type == 'role' and target_id:
+        rids = [r for (r,) in db.query(UserDB.id).filter(
+            UserDB.role == target_id, UserDB.is_active == True).all()]  # noqa: E712
+    elif target_type == 'department' and target_id:
+        rids = [r for (r,) in db.query(UserDB.id).filter(
+            UserDB.department == target_id, UserDB.is_active == True).all()]  # noqa: E712
+    else:
+        rids = []
+    for rid in rids:
+        try:
+            db.add(UserNotificationDB(notification_id=notif.id, user_id=rid))
+            db.flush()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+    db.commit()
+    return notif
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserDB:
@@ -827,26 +1155,62 @@ def me(u: UserDB = Depends(get_current_user)):
 
 # ── Dashboard endpoints (mock data — Sprint C onwards will replace) ──────────
 @router.get('/dashboard/stats')
-def stats(u: UserDB = Depends(get_current_user)):
+def stats(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = current_quarter()
+    # Live XP from ledger
+    total_xp = u.xp_points or 0
+    # Live practice count (approved)
+    practice_cnt = db.query(BestPracticeDB).filter(
+        BestPracticeDB.status == 'approved').count()
+    # Live tech day count (approved, current quarter)
+    td_cnt = db.query(TechDayDB).filter(
+        TechDayDB.conductor_id == u.id, TechDayDB.status == 'approved').count()
+    # Live pending: practices + replications submitted by user awaiting review
+    pending_cnt = (
+        db.query(BestPracticeDB).filter(
+            BestPracticeDB.author_id == u.id, BestPracticeDB.status == 'pending').count() +
+        db.query(ReplicationDB).filter(
+            ReplicationDB.replicator_id == u.id, ReplicationDB.status == 'pending').count()
+    )
+    # Incentive amount from current quarter calc
+    inc = db.query(IncentiveCalcDB).filter(
+        IncentiveCalcDB.user_id == u.id, IncentiveCalcDB.quarter == q).first()
+    incentive_amt = int(float(inc.amount_inr or 0)) if inc else 0
     return {
-        'best_practices': {'count': 80,   'trend': '+5%',  'label': 'BEST PRACTICES',  'sub': 'Applications Submitted'},
-        'efforts':        {'count': u.xp_points, 'trend': '+12%', 'label': 'EFFORTS (XP)', 'sub': 'LPSubmissions-Run.in'},
-        'xp_incentive':   {'amount': 8400,'trend': '+8%',  'label': 'XP INCENTIVE',     'sub': 'Payout in Q1'},
-        'tech_days':      {'count': 8,    'trend': 'New',  'label': 'TECH DAYS',        'sub': '10 days'},
-        'pending_actions':{'count': 3,    'trend': 'Due',  'label': 'PENDING ACTIONS',  'sub': 'Action needed'}
+        'best_practices': {'count': practice_cnt, 'trend': '+5%', 'label': 'BEST PRACTICES', 'sub': 'Total Approved'},
+        'efforts':        {'count': total_xp, 'trend': '+12%', 'label': 'EFFORTS (XP)', 'sub': 'Total XP Earned'},
+        'xp_incentive':   {'amount': incentive_amt, 'trend': '+8%', 'label': 'XP INCENTIVE', 'sub': f'Payout in {q}'},
+        'tech_days':      {'count': td_cnt, 'trend': 'New', 'label': 'TECH DAYS', 'sub': 'Approved'},
+        'pending_actions':{'count': pending_cnt, 'trend': 'Due', 'label': 'PENDING', 'sub': 'Awaiting review'}
     }
 
 
 @router.get('/dashboard/activities')
-def activities(_u: UserDB = Depends(get_current_user)):
-    return [
-        {'id':'1','user':'Kiran Shah','action':'submitted new best practice — API Unified Base Stability Platform. 185 XP pending approval.','category':'Best Practices','time':'2 hours ago','type':'submission','color':'red'},
-        {'id':'2','user':'You','action':'approved Forms: final record submission: Registration. Forwarded to HBS Villiers Singh.','category':'Best Practices','time':'1 day ago','type':'approval','color':'green'},
-        {'id':'3','user':'Nikhil Patil','action':'tagged Tech Day — GandyFor/Pharma with 3 prospects. 35 XP submitted.','category':'Tech Days','time':'2 days ago','type':'tag','color':'blue'},
-        {'id':'4','user':'Visitor pre-registration','action':'Piyami recently 20 guests/participants for Apr 30. 4,500 XP.','category':'Visitors','time':'3 days ago','type':'visitor','color':'teal'},
-        {'id':'5','user':'Sundar Vs','action':'completed in Productivity Hub, 678 tasks delivered. Yesterday 42 XP.','category':'Productivity','time':'4 days ago','type':'task','color':'amber'},
-        {'id':'6','user':'Access review','action':'completed for 500 users — 96 accounts verified, 2 flagged for review.','category':'Access Rights','time':'Yesterday','type':'review','color':'gray'}
-    ]
+def activities(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Live: recent practices + replications
+    items = []
+    practices = (db.query(BestPracticeDB, UserDB)
+                 .join(UserDB, UserDB.id == BestPracticeDB.author_id)
+                 .order_by(BestPracticeDB.created_at.desc()).limit(4).all())
+    for bp, author in practices:
+        items.append({
+            'id': bp.id, 'user': author.name,
+            'action': f'submitted best practice — {bp.title}. {bp.xp_awarded} XP.',
+            'category': 'Best Practices',
+            'time': _rel_time(bp.created_at), 'type': 'submission', 'color': 'red'
+        })
+    reps = (db.query(ReplicationDB, UserDB)
+            .join(UserDB, UserDB.id == ReplicationDB.replicator_id)
+            .order_by(ReplicationDB.created_at.desc()).limit(3).all())
+    for rep, replicator in reps:
+        items.append({
+            'id': rep.id, 'user': replicator.name,
+            'action': f'submitted replication for client {rep.client_name}. {rep.xp_awarded} XP.',
+            'category': 'Replications',
+            'time': _rel_time(rep.created_at), 'type': 'replication', 'color': 'blue'
+        })
+    items.sort(key=lambda x: x['time'])
+    return items[:6]
 
 
 @router.get('/dashboard/leaderboard')
@@ -859,44 +1223,83 @@ def leaderboard(u: UserDB = Depends(get_current_user), db: Session = Depends(get
 
 
 @router.get('/dashboard/announcements')
-def announcements(_u: UserDB = Depends(get_current_user)):
+def announcements(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Live announcements from notifications table (category=announcement)."""
+    notifs = (db.query(NotificationDB)
+              .filter(NotificationDB.category == 'announcement')
+              .order_by(NotificationDB.created_at.desc()).limit(4).all())
+    if notifs:
+        return [{'id': n.id, 'title': n.title, 'body': n.body,
+                 'date': n.created_at.strftime('%b %d') if n.created_at else '',
+                 'color': 'red' if n.is_urgent else 'blue'}
+                for n in notifs]
+    # Fallback mock data when no announcements created yet
     return [
-        {'id':'1','title':'Incentives Paid','body':'Q1-2025 incentives paid. Total payout: ₹2,04,000. Check your statement.','date':'Apr 17','color':'green'},
-        {'id':'2','title':'New Module: Workflow Automation — Beta','body':'Workflow Automation module live for testing. Enrollment needed for early access.','date':'Apr 15','color':'blue'},
-        {'id':'3','title':'Best Practices — 30 Active Practices','body':'Active practices reached 30 this quarter. Congratulations to all contributors.','date':'Apr 11','color':'red'},
-        {'id':'4','title':'Visitor Management Go-Live','body':'Visitor Management module is now live. Please update all visitor registrations.','date':'Apr 9','color':'teal'}
+        {'id': '1', 'title': 'Incentives Paid', 'body': 'Q1-2025 incentives paid. Check your statement.', 'date': 'Apr 17', 'color': 'green'},
+        {'id': '2', 'title': 'New Module: Workflow Automation', 'body': 'Beta live for testing. Enrol for early access.', 'date': 'Apr 15', 'color': 'blue'},
     ]
 
 
 @router.get('/dashboard/pending-actions')
-def pending(_u: UserDB = Depends(get_current_user)):
-    return [
-        {'id':'1','title':'Approve Resubmission: Replication','category':'Best Practices','priority':'high'},
-        {'id':'2','title':'Confirm Trip/Rider/Visitor - Apr 30','category':'Visitors','priority':'medium'},
-        {'id':'3','title':'Submit Tech Day attendance proof','category':'Tech Days','priority':'high'}
-    ]
+def pending(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    items = []
+    # User's own pending practices
+    pending_bp = db.query(BestPracticeDB).filter(
+        BestPracticeDB.author_id == u.id, BestPracticeDB.status == 'pending').limit(2).all()
+    for bp in pending_bp:
+        items.append({'id': bp.id, 'title': f'Practice review pending: {bp.title}', 'category': 'Best Practices', 'priority': 'high'})
+    # User's pending replications
+    pending_rep = db.query(ReplicationDB).filter(
+        ReplicationDB.replicator_id == u.id, ReplicationDB.status == 'pending').limit(2).all()
+    for rep in pending_rep:
+        items.append({'id': rep.id, 'title': f'Replication pending: {rep.client_name}', 'category': 'Replications', 'priority': 'high'})
+    if not items:
+        items = [{'id': '1', 'title': 'No pending actions', 'category': 'All clear', 'priority': 'low'}]
+    return items[:4]
 
 
 @router.get('/dashboard/upcoming')
 def upcoming(_u: UserDB = Depends(get_current_user)):
     return [
-        {'id':'1','title':'Tech Day — All For SPTS','description':'Bangalore, GEC • 2 Hrs','date':'Apr 30, 9:00 AM','color':'red'},
-        {'id':'2','title':'Visitor — Bajaj Finance','description':'6 Guests','date':'Apr 30, 2:00 PM','color':'blue'},
-        {'id':'3','title':'365 Incentive Payout','description':'Finance Dept','date':'May 1','color':'green'}
+        {'id': '1', 'title': 'Tech Day — All For SPTS', 'description': 'Bangalore, GEC • 2 Hrs', 'date': 'Apr 30, 9:00 AM', 'color': 'red'},
+        {'id': '2', 'title': 'Visitor — Bajaj Finance',  'description': '6 Guests',               'date': 'Apr 30, 2:00 PM', 'color': 'blue'},
+        {'id': '3', 'title': '365 Incentive Payout',     'description': 'Finance Dept',            'date': 'May 1',           'color': 'green'}
     ]
 
 
 @router.get('/dashboard/score')
-def score(u: UserDB = Depends(get_current_user)):
+def score(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = current_quarter()
+    xp_prac = sum(r.xp_delta for r in db.query(XpLedgerDB).filter(
+        XpLedgerDB.user_id == u.id, XpLedgerDB.source_type == 'original_practice').all())
+    xp_rep  = sum(r.xp_delta for r in db.query(XpLedgerDB).filter(
+        XpLedgerDB.user_id == u.id, XpLedgerDB.source_type == 'replication').all())
+    xp_td   = sum(r.xp_delta for r in db.query(XpLedgerDB).filter(
+        XpLedgerDB.user_id == u.id, XpLedgerDB.source_type == 'tech_day').all())
+    total   = u.xp_points or 0
+    pct     = min(100, int(total / 50)) if total else 0
+    max_val = max(xp_prac, xp_rep, xp_td, 1)
     return {
-        'percentage': 65,
-        'total_xp': u.xp_points,
+        'percentage': pct,
+        'total_xp': total,
+        'quarter': q,
         'breakdown': [
-            {'label': 'Practices',    'value': 7, 'bar': 70},
-            {'label': 'Publications', 'value': 4, 'bar': 40},
-            {'label': 'Tech Days',    'value': 8, 'bar': 80},
+            {'label': 'Practices',    'value': xp_prac, 'bar': round(xp_prac / max_val * 100)},
+            {'label': 'Replications', 'value': xp_rep,  'bar': round(xp_rep  / max_val * 100)},
+            {'label': 'Tech Days',    'value': xp_td,   'bar': round(xp_td   / max_val * 100)},
         ],
     }
+
+
+def _rel_time(dt) -> str:
+    if not dt:
+        return 'recently'
+    diff = datetime.now(timezone.utc) - dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else datetime.now(timezone.utc) - dt
+    s = diff.total_seconds()
+    if s < 3600:   return f"{int(s/60) or 1} min ago"
+    if s < 86400:  return f"{int(s/3600)} hour{'s' if s >= 7200 else ''} ago"
+    if s < 604800: return f"{int(s/86400)} day{'s' if s >= 172800 else ''} ago"
+    return dt.strftime('%b %d')
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
@@ -1345,6 +1748,594 @@ def admin_publish_history(_u: UserDB = Depends(_admin_role),
             for r in rows]
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT D — XP & Incentive Engine Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── XP Summary & Ledger ───────────────────────────────────────────────────────
+
+@router.get('/xp/summary')
+def xp_summary(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = current_quarter()
+    ledger = db.query(XpLedgerDB).filter(XpLedgerDB.user_id == u.id).all()
+    q_rows  = [r for r in ledger if r.quarter == q]
+    by_type = {}
+    for r in q_rows:
+        by_type[r.source_type] = by_type.get(r.source_type, 0) + r.xp_delta
+    xp_list = [x for (x,) in db.query(UserDB.xp_points).filter(UserDB.is_active == True).all()]  # noqa: E712
+    xp_list.sort(reverse=True)
+    rank = (xp_list.index(u.xp_points) + 1) if u.xp_points in xp_list else len(xp_list)
+    return {
+        'total_xp': u.xp_points,
+        'quarter': q,
+        'quarter_xp': sum(r.xp_delta for r in q_rows),
+        'rank': rank,
+        'total_users': len(xp_list),
+        'breakdown': by_type,
+        'level': min(10, (u.xp_points or 0) // 500 + 1),
+    }
+
+
+@router.get('/xp/ledger')
+def xp_ledger(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db),
+              limit: int = 50, offset: int = 0):
+    rows = (db.query(XpLedgerDB).filter(XpLedgerDB.user_id == u.id)
+            .order_by(XpLedgerDB.id.desc()).offset(offset).limit(limit).all())
+    return [{'id': r.id, 'xp_delta': r.xp_delta, 'xp_balance': r.xp_balance,
+             'source_type': r.source_type, 'source_id': r.source_id,
+             'art_multiplier': r.art_multiplier, 'quarter': r.quarter,
+             'description': r.description,
+             'created_at': r.created_at.isoformat() if r.created_at else None}
+            for r in rows]
+
+
+# ── Best Practices ────────────────────────────────────────────────────────────
+
+@router.get('/practices')
+def list_practices(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db),
+                   pillar: Optional[str] = None, status: str = 'approved',
+                   limit: int = 20, offset: int = 0):
+    q = db.query(BestPracticeDB)
+    if status == 'mine':
+        q = q.filter(BestPracticeDB.author_id == u.id)
+    elif status:
+        q = q.filter(BestPracticeDB.status == status)
+    if pillar:
+        q = q.filter(BestPracticeDB.pillar == pillar)
+    total = q.count()
+    rows  = q.order_by(BestPracticeDB.created_at.desc()).offset(offset).limit(limit).all()
+    return {'total': total, 'items': [_bp_dict(bp, db) for bp in rows]}
+
+
+@router.post('/practices')
+def submit_practice(body: PracticeSubmitReq, u: UserDB = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    bp = BestPracticeDB(
+        id=str(uuid.uuid4()), author_id=u.id, title=body.title, summary=body.summary,
+        why_content=body.why_content, how_content=body.how_content,
+        what_content=body.what_content, impact_content=body.impact_content,
+        difficulty=body.difficulty, pillar=body.pillar, art_tag=body.art_tag,
+        tags=body.tags or [], status=body.status or 'pending',
+    )
+    db.add(bp)
+    db.commit()
+    db.refresh(bp)
+    return _bp_dict(bp, db)
+
+
+@router.get('/practices/{practice_id}')
+def get_practice(practice_id: str, u: UserDB = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == practice_id).first()
+    if not bp:
+        raise HTTPException(404, 'Practice not found')
+    return _bp_dict(bp, db)
+
+
+@router.put('/practices/{practice_id}')
+def update_practice(practice_id: str, body: PracticeSubmitReq,
+                    u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(
+        BestPracticeDB.id == practice_id, BestPracticeDB.author_id == u.id).first()
+    if not bp:
+        raise HTTPException(404, 'Practice not found or not yours')
+    if bp.status == 'approved':
+        raise HTTPException(400, 'Approved practices cannot be edited')
+    for field, val in body.dict(exclude_unset=True).items():
+        setattr(bp, field, val)
+    bp.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return _bp_dict(bp, db)
+
+
+@router.delete('/practices/{practice_id}')
+def delete_practice(practice_id: str, u: UserDB = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(
+        BestPracticeDB.id == practice_id, BestPracticeDB.author_id == u.id).first()
+    if not bp or bp.status == 'approved':
+        raise HTTPException(404, 'Practice not found or cannot delete approved')
+    db.delete(bp)
+    db.commit()
+    return {'deleted': True}
+
+
+def _bp_dict(bp: BestPracticeDB, db: Session) -> dict:
+    author = db.query(UserDB).filter(UserDB.id == bp.author_id).first()
+    return {
+        'id': bp.id, 'title': bp.title, 'summary': bp.summary,
+        'why_content': bp.why_content, 'how_content': bp.how_content,
+        'what_content': bp.what_content, 'impact_content': bp.impact_content,
+        'difficulty': bp.difficulty, 'pillar': bp.pillar, 'art_tag': bp.art_tag,
+        'tags': bp.tags or [], 'status': bp.status,
+        'xp_awarded': bp.xp_awarded, 'replication_cnt': bp.replication_cnt,
+        'is_featured': bp.is_featured, 'reject_reason': bp.reject_reason,
+        'author_name': author.name if author else 'Unknown',
+        'author_id': bp.author_id,
+        'created_at': bp.created_at.isoformat() if bp.created_at else None,
+    }
+
+
+# ── Replications ──────────────────────────────────────────────────────────────
+
+@router.post('/replications')
+def submit_replication(body: ReplicationSubmitReq, u: UserDB = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(
+        BestPracticeDB.id == body.practice_id,
+        BestPracticeDB.status == 'approved').first()
+    if not bp:
+        raise HTTPException(404, 'Approved practice not found')
+    rep = ReplicationDB(
+        id=str(uuid.uuid4()), practice_id=body.practice_id, replicator_id=u.id,
+        client_name=body.client_name, po_number=body.po_number,
+        po_value_inr=body.po_value_inr, notes=body.notes,
+    )
+    db.add(rep)
+    db.commit()
+    db.refresh(rep)
+    return _rep_dict(rep, db)
+
+
+@router.get('/replications/mine')
+def my_replications(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db),
+                    limit: int = 20, offset: int = 0):
+    rows = (db.query(ReplicationDB).filter(ReplicationDB.replicator_id == u.id)
+            .order_by(ReplicationDB.created_at.desc()).offset(offset).limit(limit).all())
+    return [_rep_dict(r, db) for r in rows]
+
+
+def _rep_dict(rep: ReplicationDB, db: Session) -> dict:
+    bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == rep.practice_id).first()
+    return {
+        'id': rep.id, 'practice_id': rep.practice_id,
+        'practice_title': bp.title if bp else '—',
+        'client_name': rep.client_name, 'po_number': rep.po_number,
+        'po_value_inr': rep.po_value_inr, 'status': rep.status,
+        'xp_awarded': rep.xp_awarded, 'referral_xp': rep.referral_xp,
+        'notes': rep.notes,
+        'created_at': rep.created_at.isoformat() if rep.created_at else None,
+    }
+
+
+# ── Incentive Statement ───────────────────────────────────────────────────────
+
+@router.get('/incentive/statement')
+def incentive_statement(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = current_quarter()
+    ledger = db.query(XpLedgerDB).filter(
+        XpLedgerDB.user_id == u.id, XpLedgerDB.quarter == q).all()
+    xp_original    = sum(r.xp_delta for r in ledger if r.source_type == 'original_practice')
+    xp_replication = sum(r.xp_delta for r in ledger if r.source_type == 'replication')
+    xp_tech_day    = sum(r.xp_delta for r in ledger if r.source_type == 'tech_day')
+    xp_other       = sum(r.xp_delta for r in ledger if r.source_type not in (
+                         'original_practice', 'replication', 'tech_day'))
+    amount = (xp_original * INR_RATE['original_practice'] +
+              xp_replication * INR_RATE['replication'] +
+              xp_tech_day * INR_RATE['tech_day'])
+    inc = db.query(IncentiveCalcDB).filter(
+        IncentiveCalcDB.user_id == u.id, IncentiveCalcDB.quarter == q).first()
+    if not inc:
+        inc = IncentiveCalcDB(
+            id=str(uuid.uuid4()), user_id=u.id, quarter=q,
+            xp_original=xp_original, xp_replication=xp_replication,
+            xp_tech_day=xp_tech_day, xp_other=xp_other,
+            amount_inr=str(round(amount, 2)), status='draft',
+        )
+        db.add(inc)
+        db.commit()
+    return {
+        'quarter': q,
+        'xp_original': xp_original,
+        'xp_replication': xp_replication,
+        'xp_tech_day': xp_tech_day,
+        'xp_other': xp_other,
+        'xp_total': xp_original + xp_replication + xp_tech_day + xp_other,
+        'amount_inr': round(amount, 2),
+        'rate_original': INR_RATE['original_practice'],
+        'rate_replication': INR_RATE['replication'],
+        'rate_tech_day': INR_RATE['tech_day'],
+        'status': inc.status if inc else 'draft',
+        'payout_date': inc.payout_date.isoformat() if inc and inc.payout_date else None,
+    }
+
+
+# ── Tech Days ─────────────────────────────────────────────────────────────────
+
+@router.post('/tech-days')
+def submit_tech_day(body: TechDaySubmitReq, u: UserDB = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    from datetime import date
+    try:
+        cd = date.fromisoformat(body.conducted_on)
+    except Exception:
+        raise HTTPException(400, 'Invalid conducted_on date (YYYY-MM-DD)')
+    td = TechDayDB(
+        id=str(uuid.uuid4()), conductor_id=u.id, title=body.title,
+        description=body.description, client_name=body.client_name,
+        attendee_count=body.attendee_count, conducted_on=cd,
+        evidence_url=body.evidence_url, status='pending',
+    )
+    db.add(td)
+    db.commit()
+    db.refresh(td)
+    return _td_dict(td)
+
+
+@router.get('/tech-days/mine')
+def my_tech_days(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(TechDayDB).filter(TechDayDB.conductor_id == u.id).order_by(
+        TechDayDB.created_at.desc()).limit(20).all()
+    return [_td_dict(r) for r in rows]
+
+
+def _td_dict(td: TechDayDB) -> dict:
+    return {
+        'id': td.id, 'title': td.title, 'description': td.description,
+        'client_name': td.client_name, 'attendee_count': td.attendee_count,
+        'conducted_on': td.conducted_on.isoformat() if td.conducted_on else None,
+        'status': td.status, 'xp_awarded': td.xp_awarded,
+        'evidence_url': td.evidence_url,
+        'created_at': td.created_at.isoformat() if td.created_at else None,
+    }
+
+
+# ── Certifications ────────────────────────────────────────────────────────────
+
+@router.post('/certifications')
+def submit_cert(body: CertSubmitReq, u: UserDB = Depends(get_current_user),
+                db: Session = Depends(get_db)):
+    from datetime import date
+    cert = CertificationDB(
+        id=str(uuid.uuid4()), user_id=u.id, cert_name=body.cert_name,
+        provider=body.provider, cert_id=body.cert_id,
+        issued_on=date.fromisoformat(body.issued_on) if body.issued_on else None,
+        expires_on=date.fromisoformat(body.expires_on) if body.expires_on else None,
+        evidence_url=body.evidence_url, xp_awarded=CERT_XP, verified=False,
+    )
+    db.add(cert)
+    db.commit()
+    db.refresh(cert)
+    add_xp(db, u.id, CERT_XP, 'certification', source_id=cert.id,
+           description=f'Certification: {body.cert_name}')
+    db.commit()
+    return {'id': cert.id, 'cert_name': cert.cert_name, 'xp_awarded': cert.xp_awarded,
+            'verified': cert.verified, 'created_at': cert.created_at.isoformat()}
+
+
+@router.get('/certifications/mine')
+def my_certs(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(CertificationDB).filter(CertificationDB.user_id == u.id).order_by(
+        CertificationDB.created_at.desc()).limit(20).all()
+    return [{'id': r.id, 'cert_name': r.cert_name, 'provider': r.provider,
+             'cert_id': r.cert_id, 'xp_awarded': r.xp_awarded, 'verified': r.verified,
+             'issued_on': r.issued_on.isoformat() if r.issued_on else None,
+             'created_at': r.created_at.isoformat() if r.created_at else None}
+            for r in rows]
+
+
+# ── Leaderboard (live XP) ─────────────────────────────────────────────────────
+
+@router.get('/leaderboard')
+def xp_leaderboard(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db),
+                   limit: int = 50):
+    users = db.query(UserDB).filter(UserDB.is_active == True).order_by(  # noqa: E712
+        UserDB.xp_points.desc()).limit(limit).all()
+    return [{'rank': i+1, 'user_id': usr.id, 'name': usr.name, 'department': usr.department,
+             'role': usr.role, 'xp': usr.xp_points,
+             'is_current_user': usr.id == u.id,
+             'initials': ''.join(p[0].upper() for p in usr.name.split()[:2])}
+            for i, usr in enumerate(users)]
+
+
+# ── Admin — Practice Review ───────────────────────────────────────────────────
+
+@router.get('/admin/practices')
+def admin_practices(u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                    db: Session = Depends(get_db),
+                    status: str = 'pending', limit: int = 30, offset: int = 0):
+    q = db.query(BestPracticeDB)
+    if status != 'all':
+        q = q.filter(BestPracticeDB.status == status)
+    total = q.count()
+    rows  = q.order_by(BestPracticeDB.created_at.desc()).offset(offset).limit(limit).all()
+    return {'total': total, 'items': [_bp_dict(bp, db) for bp in rows]}
+
+
+@router.post('/admin/practices/{practice_id}/approve')
+def admin_approve_practice(practice_id: str, request: Request,
+                           u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                           db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == practice_id).first()
+    if not bp:
+        raise HTTPException(404, 'Practice not found')
+    bp.status = 'approved'
+    bp.reviewer_id = u.id
+    bp.reviewed_at = datetime.now(timezone.utc)
+    xp, mult = calc_practice_xp(bp.difficulty, bp.art_tag)
+    bp.xp_awarded = xp
+    new_bal = add_xp(db, bp.author_id, xp, 'original_practice',
+                     source_id=bp.id, art_multiplier=mult,
+                     description=f'Practice approved: {bp.title}')
+    db.commit()
+    author = db.query(UserDB).filter(UserDB.id == bp.author_id).first()
+    if author:
+        _dispatch_notification(db, title='Best Practice Approved! 🎉',
+                               body=f'Your practice "{bp.title}" was approved. +{xp} XP credited.',
+                               category='approved', target_type='user', target_id=author.id,
+                               deep_link='/practices', created_by=u.id)
+    audit(db, user_id=u.id, actor_email=u.email, action='practice_approve',
+          status='success', request=request, target_type='practice', target_id=practice_id,
+          details={'xp': xp, 'author_id': bp.author_id})
+    return {'approved': True, 'xp_awarded': xp, 'new_balance': new_bal}
+
+
+@router.post('/admin/practices/{practice_id}/reject')
+def admin_reject_practice(practice_id: str, body: AdminPracticeActionReq, request: Request,
+                          u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                          db: Session = Depends(get_db)):
+    bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == practice_id).first()
+    if not bp:
+        raise HTTPException(404, 'Practice not found')
+    bp.status = 'rejected'
+    bp.reviewer_id = u.id
+    bp.reviewed_at = datetime.now(timezone.utc)
+    bp.reject_reason = body.reject_reason
+    db.commit()
+    author = db.query(UserDB).filter(UserDB.id == bp.author_id).first()
+    if author:
+        reason = f' Reason: {body.reject_reason}' if body.reject_reason else ''
+        _dispatch_notification(db, title='Practice Submission Update',
+                               body=f'Your practice "{bp.title}" needs revision.{reason}',
+                               category='approved', target_type='user', target_id=author.id,
+                               created_by=u.id)
+    return {'rejected': True}
+
+
+# ── Admin — Replication Review ────────────────────────────────────────────────
+
+@router.get('/admin/replications')
+def admin_replications(u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                       db: Session = Depends(get_db),
+                       status: str = 'pending', limit: int = 30, offset: int = 0):
+    q = db.query(ReplicationDB)
+    if status != 'all':
+        q = q.filter(ReplicationDB.status == status)
+    total = q.count()
+    rows  = q.order_by(ReplicationDB.created_at.desc()).offset(offset).limit(limit).all()
+    return {'total': total, 'items': [_rep_dict(r, db) for r in rows]}
+
+
+@router.post('/admin/replications/{rep_id}/approve')
+def admin_approve_replication(rep_id: str, request: Request,
+                              u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                              db: Session = Depends(get_db)):
+    rep = db.query(ReplicationDB).filter(ReplicationDB.id == rep_id).first()
+    if not rep:
+        raise HTTPException(404, 'Replication not found')
+    bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == rep.practice_id).first()
+    has_po = bool(rep.po_number)
+    diff = bp.difficulty if bp else 'medium'
+    art  = bp.art_tag if bp else None
+    xp, ref_xp, mult = calc_replication_xp(diff, has_po, art)
+    rep.status = 'approved'
+    rep.approved_by = u.id
+    rep.approved_at = datetime.now(timezone.utc)
+    rep.xp_awarded  = xp
+    rep.referral_xp = ref_xp
+    add_xp(db, rep.replicator_id, xp, 'replication', source_id=rep.id,
+           art_multiplier=mult, description=f'Replication approved: {bp.title if bp else rep.id}')
+    if bp and bp.author_id != rep.replicator_id:
+        add_xp(db, bp.author_id, ref_xp, 'referral', source_id=rep.id,
+               description='Referral XP: your practice was replicated')
+        bp.replication_cnt = (bp.replication_cnt or 0) + 1
+    db.commit()
+    _dispatch_notification(db, title='Replication Approved! 🎉',
+                           body=f'Replication for {rep.client_name} approved. +{xp} XP credited.',
+                           category='replication', target_type='user', target_id=rep.replicator_id,
+                           created_by=u.id)
+    return {'approved': True, 'xp_awarded': xp, 'referral_xp': ref_xp}
+
+
+@router.post('/admin/replications/{rep_id}/reject')
+def admin_reject_replication(rep_id: str, body: AdminPracticeActionReq, request: Request,
+                             u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                             db: Session = Depends(get_db)):
+    rep = db.query(ReplicationDB).filter(ReplicationDB.id == rep_id).first()
+    if not rep:
+        raise HTTPException(404, 'Replication not found')
+    rep.status = 'rejected'
+    rep.approved_by = u.id
+    rep.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    return {'rejected': True}
+
+
+# ── Admin — Tech Day Review ───────────────────────────────────────────────────
+
+@router.get('/admin/tech-days')
+def admin_tech_days(u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                    db: Session = Depends(get_db), status: str = 'pending'):
+    q = db.query(TechDayDB)
+    if status != 'all':
+        q = q.filter(TechDayDB.status == status)
+    rows = q.order_by(TechDayDB.created_at.desc()).limit(30).all()
+    return [_td_dict(r) for r in rows]
+
+
+@router.post('/admin/tech-days/{td_id}/approve')
+def admin_approve_tech_day(td_id: str, request: Request,
+                           u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                           db: Session = Depends(get_db)):
+    td = db.query(TechDayDB).filter(TechDayDB.id == td_id).first()
+    if not td:
+        raise HTTPException(404, 'Tech Day not found')
+    xp = calc_tech_day_xp(td.attendee_count or 0)
+    td.status = 'approved'
+    td.approved_by = u.id
+    td.xp_awarded = xp
+    add_xp(db, td.conductor_id, xp, 'tech_day', source_id=td.id,
+           description=f'Tech Day approved: {td.title}')
+    db.commit()
+    _dispatch_notification(db, title='Tech Day Approved! 🎉',
+                           body=f'Your Tech Day "{td.title}" was approved. +{xp} XP.',
+                           category='approved', target_type='user', target_id=td.conductor_id,
+                           created_by=u.id)
+    return {'approved': True, 'xp_awarded': xp}
+
+
+@router.post('/admin/tech-days/{td_id}/reject')
+def admin_reject_tech_day(td_id: str, request: Request,
+                          u: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+                          db: Session = Depends(get_db)):
+    td = db.query(TechDayDB).filter(TechDayDB.id == td_id).first()
+    if not td:
+        raise HTTPException(404, 'Tech Day not found')
+    td.status = 'rejected'
+    db.commit()
+    return {'rejected': True}
+
+
+# ── Admin — Certifications ────────────────────────────────────────────────────
+
+@router.get('/admin/certifications')
+def admin_certifications(u: UserDB = Depends(require_role('admin', 'super_admin')),
+                         db: Session = Depends(get_db)):
+    rows = db.query(CertificationDB).order_by(CertificationDB.created_at.desc()).limit(50).all()
+    return [{'id': r.id, 'user_id': r.user_id, 'cert_name': r.cert_name,
+             'provider': r.provider, 'xp_awarded': r.xp_awarded, 'verified': r.verified,
+             'created_at': r.created_at.isoformat() if r.created_at else None}
+            for r in rows]
+
+
+# ── Admin — Analytics ─────────────────────────────────────────────────────────
+
+@router.get('/admin/analytics/summary')
+def admin_analytics(u: UserDB = Depends(require_role('admin', 'super_admin')),
+                    db: Session = Depends(get_db)):
+    q = current_quarter()
+    return {
+        'quarter': q,
+        'total_users': db.query(UserDB).filter(UserDB.is_active == True).count(),  # noqa: E712
+        'pending_user_approvals': db.query(UserDB).filter(UserDB.is_active == False).count(),  # noqa: E712
+        'total_practices': db.query(BestPracticeDB).filter(BestPracticeDB.status == 'approved').count(),
+        'pending_practices': db.query(BestPracticeDB).filter(BestPracticeDB.status == 'pending').count(),
+        'total_replications': db.query(ReplicationDB).filter(ReplicationDB.status == 'approved').count(),
+        'pending_replications': db.query(ReplicationDB).filter(ReplicationDB.status == 'pending').count(),
+        'total_tech_days': db.query(TechDayDB).filter(TechDayDB.status == 'approved').count(),
+        'total_certifications': db.query(CertificationDB).count(),
+        'total_xp_quarter': db.query(XpLedgerDB).filter(XpLedgerDB.quarter == q).count(),
+        'notifications_sent': db.query(NotificationDB).count(),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT E — Notifications Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+@router.get('/notifications/unread-count')
+def notif_unread_count(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    count = db.query(UserNotificationDB).filter(
+        UserNotificationDB.user_id == u.id,
+        UserNotificationDB.is_read == False,   # noqa: E712
+        UserNotificationDB.is_dismissed == False).count()  # noqa: E712
+    return {'count': count}
+
+
+@router.get('/notifications')
+def list_notifications(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db),
+                       limit: int = 30, offset: int = 0, unread_only: bool = False):
+    q = db.query(UserNotificationDB, NotificationDB).join(
+        NotificationDB, NotificationDB.id == UserNotificationDB.notification_id).filter(
+        UserNotificationDB.user_id == u.id,
+        UserNotificationDB.is_dismissed == False)  # noqa: E712
+    if unread_only:
+        q = q.filter(UserNotificationDB.is_read == False)  # noqa: E712
+    total = q.count()
+    rows  = q.order_by(UserNotificationDB.delivered_at.desc()).offset(offset).limit(limit).all()
+    return {
+        'total': total,
+        'items': [{
+            'id': un.id, 'notification_id': n.id,
+            'title': n.title, 'body': n.body, 'category': n.category,
+            'is_urgent': n.is_urgent, 'deep_link': n.deep_link,
+            'is_read': un.is_read,
+            'delivered_at': un.delivered_at.isoformat() if un.delivered_at else None,
+            'read_at': un.read_at.isoformat() if un.read_at else None,
+        } for un, n in rows]
+    }
+
+
+@router.put('/notifications/{un_id}/read')
+def mark_notification_read(un_id: int, u: UserDB = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    un = db.query(UserNotificationDB).filter(
+        UserNotificationDB.id == un_id, UserNotificationDB.user_id == u.id).first()
+    if not un:
+        raise HTTPException(404, 'Notification not found')
+    un.is_read = True
+    un.read_at = datetime.now(timezone.utc)
+    db.commit()
+    return {'read': True}
+
+
+@router.put('/notifications/read-all')
+def mark_all_read(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(UserNotificationDB).filter(
+        UserNotificationDB.user_id == u.id,
+        UserNotificationDB.is_read == False).update(  # noqa: E712
+        {'is_read': True, 'read_at': datetime.now(timezone.utc)})
+    db.commit()
+    return {'done': True}
+
+
+@router.post('/admin/notifications/send')
+def send_notification(body: SendNotificationReq, request: Request,
+                      u: UserDB = Depends(require_role('admin', 'super_admin')),
+                      db: Session = Depends(get_db)):
+    notif = _dispatch_notification(
+        db, title=body.title, body=body.body, category=body.category,
+        target_type=body.target_type, target_id=body.target_id,
+        is_urgent=body.is_urgent, deep_link=body.deep_link, created_by=u.id,
+    )
+    audit(db, user_id=u.id, actor_email=u.email, action='notification_send',
+          status='success', request=request, target_type=body.target_type, target_id=body.target_id,
+          details={'title': body.title, 'category': body.category})
+    return {'sent': True, 'notification_id': notif.id}
+
+
+@router.get('/admin/notifications')
+def admin_notifications_list(u: UserDB = Depends(require_role('admin', 'super_admin')),
+                             db: Session = Depends(get_db), limit: int = 50, offset: int = 0):
+    rows = db.query(NotificationDB).order_by(
+        NotificationDB.created_at.desc()).offset(offset).limit(limit).all()
+    return [{'id': n.id, 'title': n.title, 'body': n.body, 'category': n.category,
+             'target_type': n.target_type, 'target_id': n.target_id,
+             'is_urgent': n.is_urgent, 'sent_at': n.sent_at.isoformat() if n.sent_at else None,
+             'created_at': n.created_at.isoformat() if n.created_at else None}
+            for n in rows]
+
+
 # ── WebSocket endpoint for clients ────────────────────────────────────────────
 # NOTE: WebSocket lives at /api/ws (NOT /ws) so it routes through the same
 # kubernetes/nginx ingress rule as REST. Clients connect to:
@@ -1383,3 +2374,52 @@ logger = logging.getLogger(__name__)
 logger.info(f"HSI API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_ROUNDS} rounds · "
             f"mfa={'on' if MFA_ENABLED else 'off'} · ses={'on' if ses_is_configured() else 'off (dev fallback)'} · "
             f"redis={'on' if is_redis_active() else 'in-memory'}")
+
+
+# ── Sprint E — Birthday XP Scheduler ─────────────────────────────────────────
+# Awards 50 XP to every user whose birthday is today (daily at 00:05 IST).
+
+def _run_birthday_xp_job():
+    """Grant 50 XP to every user born on today's date (month + day match)."""
+    try:
+        db = SessionLocal()
+        today = datetime.now(timezone.utc)
+        # Find users with birthday matching today (month and day)
+        users = db.query(UserDB).filter(
+            UserDB.is_active == True,  # noqa: E712
+            UserDB.date_of_birth != None,  # noqa: E711
+        ).all()
+        count = 0
+        for u in users:
+            if u.date_of_birth and u.date_of_birth.month == today.month and u.date_of_birth.day == today.day:
+                # Check not already awarded today
+                existing = db.query(XpLedgerDB).filter(
+                    XpLedgerDB.user_id == u.id,
+                    XpLedgerDB.source_type == 'birthday',
+                    XpLedgerDB.quarter == current_quarter(),
+                ).first()
+                if not existing:
+                    add_xp(db, u.id, BIRTHDAY_XP, 'birthday',
+                           description=f'Happy Birthday {u.name}! 🎂 +{BIRTHDAY_XP} XP')
+                    _dispatch_notification(
+                        db,
+                        title=f'🎂 Happy Birthday, {u.name.split()[0]}!',
+                        body=f'Wishing you a wonderful birthday! +{BIRTHDAY_XP} XP has been added to your account.',
+                        category='birthday', target_type='user', target_id=u.id,
+                    )
+                    count += 1
+        logger.info(f"[BirthdayJob] Awarded {BIRTHDAY_XP} XP to {count} user(s)")
+    except Exception as e:
+        logger.error(f"[BirthdayJob] Error: {e}")
+    finally:
+        db.close()
+
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    _scheduler = BackgroundScheduler(timezone='Asia/Kolkata')
+    _scheduler.add_job(_run_birthday_xp_job, 'cron', hour=0, minute=5, id='birthday_xp')
+    _scheduler.start()
+    logger.info("[Scheduler] Birthday XP job scheduled at 00:05 IST daily")
+except Exception as _sched_err:
+    logger.warning(f"[Scheduler] Could not start scheduler: {_sched_err}")

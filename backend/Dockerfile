@@ -23,8 +23,10 @@ FROM base AS runner
 COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
 
-# Copy application source
+# Copy application source — server.py, seeder, entrypoint AND the services/
+# package (email/SES, rate_limit, websocket connection manager — Sprints B+C).
 COPY server.py seed.py entrypoint.sh ./
+COPY services/ ./services/
 RUN chmod +x entrypoint.sh
 
 # Create non-root user for security

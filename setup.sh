@@ -66,7 +66,7 @@ preflight() {
     # shellcheck disable=SC1090
     set -a; source "$ENV_FILE"; set +a
     local missing=()
-    for var in DB_NAME DB_USER DB_PASSWORD JWT_SECRET ADMIN_EMAIL ADMIN_PASSWORD REACT_APP_BACKEND_URL; do
+    for var in DB_NAME DB_USER DB_PASSWORD JWT_SECRET JWT_REFRESH_SECRET ADMIN_EMAIL ADMIN_PASSWORD REACT_APP_BACKEND_URL; do
         if [[ -z "${!var:-}" ]]; then
             missing+=("$var")
         fi
@@ -78,11 +78,23 @@ preflight() {
     if [[ "${JWT_SECRET}" == "change-me-to-a-random-32-char-string" ]]; then
         die "JWT_SECRET in .env is still the default placeholder. Generate a real one:  openssl rand -hex 32"
     fi
+    if [[ "${JWT_REFRESH_SECRET}" == "change-me-to-a-different-random-32-char-string" ]]; then
+        die "JWT_REFRESH_SECRET in .env is still the default placeholder. Generate a real one:  openssl rand -hex 32"
+    fi
+    if [[ "${JWT_SECRET}" == "${JWT_REFRESH_SECRET}" ]]; then
+        die "JWT_SECRET and JWT_REFRESH_SECRET must be different values."
+    fi
     if [[ "${DB_PASSWORD}" == "change-this-strong-db-password" ]]; then
         die "DB_PASSWORD in .env is still the default placeholder. Set a strong password."
     fi
     if [[ "${REACT_APP_BACKEND_URL}" == "https://portal.your-domain.com" ]]; then
         die "REACT_APP_BACKEND_URL in .env is still the default placeholder. Set it to your real HTTPS URL."
+    fi
+    # Soft warning: MFA on but no AWS creds → OTPs go to backend log only
+    if [[ "${MFA_ENABLED:-true}" == "true" && ( -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ) ]]; then
+        warn "MFA_ENABLED=true but AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are blank."
+        warn "OTP codes will be LOGGED to the backend container (not emailed)."
+        warn "Read them with:  docker compose logs backend | grep DEV-FALLBACK"
     fi
     ok "Environment variables validated"
 

@@ -367,15 +367,23 @@ function HomeEDMPage({ authHeader, toast }) {
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">FROM COLOR</div>
                       <div className="flex items-center gap-2">
-                        <input type="color" defaultValue={s.gradient_from || "#C8281E"} onBlur={e => update(s.id, "gradient_from", e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
-                        <input defaultValue={s.gradient_from} onBlur={e => update(s.id, "gradient_from", e.target.value)} className={cls(inputCls, "flex-1")} />
+                        <input type="color" defaultValue={s.gradient_from || "#C8281E"}
+                          onChange={e => update(s.id, "gradient_from", e.target.value)}
+                          className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+                        <input defaultValue={s.gradient_from}
+                          onBlur={e => update(s.id, "gradient_from", e.target.value)}
+                          className={cls(inputCls, "flex-1")} />
                       </div>
                     </div>
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TO COLOR</div>
                       <div className="flex items-center gap-2">
-                        <input type="color" defaultValue={s.gradient_to || "#9B1A12"} onBlur={e => update(s.id, "gradient_to", e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
-                        <input defaultValue={s.gradient_to} onBlur={e => update(s.id, "gradient_to", e.target.value)} className={cls(inputCls, "flex-1")} />
+                        <input type="color" defaultValue={s.gradient_to || "#9B1A12"}
+                          onChange={e => update(s.id, "gradient_to", e.target.value)}
+                          className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+                        <input defaultValue={s.gradient_to}
+                          onBlur={e => update(s.id, "gradient_to", e.target.value)}
+                          className={cls(inputCls, "flex-1")} />
                       </div>
                     </div>
                     <div>
@@ -493,15 +501,23 @@ function PillarManagerPage({ authHeader, toast }) {
                       <div className="flex-1">
                         <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">FROM</div>
                         <div className="flex gap-1">
-                          <input type="color" defaultValue={p.gradient_from || "#C8281E"} onBlur={e => update(p.id, "gradient_from", e.target.value)} className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
-                          <input defaultValue={p.gradient_from} onBlur={e => update(p.id, "gradient_from", e.target.value)} className={cls(inputCls, "flex-1")} />
+                          <input type="color" defaultValue={p.gradient_from || "#C8281E"}
+                            onChange={e => update(p.id, "gradient_from", e.target.value)}
+                            className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
+                          <input defaultValue={p.gradient_from}
+                            onBlur={e => update(p.id, "gradient_from", e.target.value)}
+                            className={cls(inputCls, "flex-1")} />
                         </div>
                       </div>
                       <div className="flex-1">
                         <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">TO</div>
                         <div className="flex gap-1">
-                          <input type="color" defaultValue={p.gradient_to || "#9B1A12"} onBlur={e => update(p.id, "gradient_to", e.target.value)} className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
-                          <input defaultValue={p.gradient_to} onBlur={e => update(p.id, "gradient_to", e.target.value)} className={cls(inputCls, "flex-1")} />
+                          <input type="color" defaultValue={p.gradient_to || "#9B1A12"}
+                            onChange={e => update(p.id, "gradient_to", e.target.value)}
+                            className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
+                          <input defaultValue={p.gradient_to}
+                            onBlur={e => update(p.id, "gradient_to", e.target.value)}
+                            className={cls(inputCls, "flex-1")} />
                         </div>
                       </div>
                     </div>

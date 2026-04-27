@@ -622,6 +622,19 @@ class PillarUpsertReq(BaseModel):
     is_published: bool = True
 
 
+class PillarPatchReq(BaseModel):
+    """Partial-update schema — all fields optional (PATCH semantics via PUT)."""
+    slug: Optional[str] = None
+    name: Optional[str] = None
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    gradient_from: Optional[str] = None
+    gradient_to: Optional[str] = None
+    icon_name: Optional[str] = None
+    position: Optional[int] = None
+    is_published: Optional[bool] = None
+
+
 class PillarIconUpsertReq(BaseModel):
     pillar_id: str
     name: str
@@ -638,6 +651,23 @@ class PillarIconUpsertReq(BaseModel):
     action_stat: Optional[str] = None
 
 
+class PillarIconPatchReq(BaseModel):
+    """Partial-update for pillar icons."""
+    pillar_id: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    lucide_icon: Optional[str] = None
+    route: Optional[str] = None
+    badge: Optional[str] = None
+    position: Optional[int] = None
+    is_published: Optional[bool] = None
+    card_color: Optional[str] = None
+    stat_value: Optional[str] = None
+    stat_label: Optional[str] = None
+    action_tag: Optional[str] = None
+    action_stat: Optional[str] = None
+
+
 class EdmSlideUpsertReq(BaseModel):
     scope: str                          # home | customer | innovator | employee | shareholder
     title: str
@@ -646,15 +676,46 @@ class EdmSlideUpsertReq(BaseModel):
     gradient_to: str = '#7A0000'
     image_url: Optional[str] = None
     link: Optional[str] = None
+    tag: Optional[str] = None
+    tag_color: Optional[str] = None
     position: int = 0
     is_published: bool = True
+
+
+class EdmSlidePatchReq(BaseModel):
+    """Partial-update for EDM slides."""
+    scope: Optional[str] = None
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    gradient_from: Optional[str] = None
+    gradient_to: Optional[str] = None
+    image_url: Optional[str] = None
+    link: Optional[str] = None
+    tag: Optional[str] = None
+    tag_color: Optional[str] = None
+    position: Optional[int] = None
+    is_published: Optional[bool] = None
 
 
 class QuoteUpsertReq(BaseModel):
     text: str
     author: Optional[str] = None
+    source: Optional[str] = None
+    scope: Optional[str] = 'all'
     position: int = 0
+    is_active: bool = True
     is_published: bool = True
+
+
+class QuotePatchReq(BaseModel):
+    """Partial-update for quotes."""
+    text: Optional[str] = None
+    author: Optional[str] = None
+    source: Optional[str] = None
+    scope: Optional[str] = None
+    position: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_published: Optional[bool] = None
 
 
 class PublishReq(BaseModel):
@@ -1825,13 +1886,14 @@ def admin_pillar_create(body: PillarUpsertReq, request: Request,
 
 
 @router.put('/admin/pillars/{pillar_id}')
-def admin_pillar_update(pillar_id: str, body: PillarUpsertReq, request: Request,
+def admin_pillar_update(pillar_id: str, body: PillarPatchReq, request: Request,
                         u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
     p = db.query(PillarDB).filter(PillarDB.id == pillar_id).first()
     if not p:
         raise HTTPException(404, 'Pillar not found')
-    for k, v in body.dict().items():
-        setattr(p, k, v)
+    for k, v in body.dict(exclude_unset=True).items():
+        if v is not None:
+            setattr(p, k, v)
     p.updated_by = u.id
     db.commit(); db.refresh(p)
     audit(db, user_id=u.id, actor_email=u.email, action='pillar_update',
@@ -1874,13 +1936,14 @@ def admin_icon_create(body: PillarIconUpsertReq, request: Request,
 
 
 @router.put('/admin/pillar-icons/{icon_id}')
-def admin_icon_update(icon_id: str, body: PillarIconUpsertReq, request: Request,
+def admin_icon_update(icon_id: str, body: PillarIconPatchReq, request: Request,
                       u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
     i = db.query(PillarIconDB).filter(PillarIconDB.id == icon_id).first()
     if not i:
         raise HTTPException(404, 'Icon not found')
-    for k, v in body.dict().items():
-        setattr(i, k, v)
+    for k, v in body.dict(exclude_unset=True).items():
+        if v is not None:
+            setattr(i, k, v)
     db.commit(); db.refresh(i)
     audit(db, user_id=u.id, actor_email=u.email, action='icon_update',
           status='success', request=request, target_type='icon', target_id=icon_id)
@@ -1922,13 +1985,14 @@ def admin_edm_create(body: EdmSlideUpsertReq, request: Request,
 
 
 @router.put('/admin/edm-slides/{slide_id}')
-def admin_edm_update(slide_id: str, body: EdmSlideUpsertReq, request: Request,
+def admin_edm_update(slide_id: str, body: EdmSlidePatchReq, request: Request,
                      u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
     s = db.query(EdmSlideDB).filter(EdmSlideDB.id == slide_id).first()
     if not s:
         raise HTTPException(404, 'Slide not found')
-    for k, v in body.dict().items():
-        setattr(s, k, v)
+    for k, v in body.dict(exclude_unset=True).items():
+        if v is not None:
+            setattr(s, k, v)
     db.commit(); db.refresh(s)
     audit(db, user_id=u.id, actor_email=u.email, action='edm_update',
           status='success', request=request, target_type='edm_slide', target_id=slide_id)
@@ -1964,13 +2028,14 @@ def admin_quote_create(body: QuoteUpsertReq, request: Request,
 
 
 @router.put('/admin/quotes/{quote_id}')
-def admin_quote_update(quote_id: str, body: QuoteUpsertReq, request: Request,
+def admin_quote_update(quote_id: str, body: QuotePatchReq, request: Request,
                        u: UserDB = Depends(_admin_role), db: Session = Depends(get_db)):
     q = db.query(QuoteDB).filter(QuoteDB.id == quote_id).first()
     if not q:
         raise HTTPException(404, 'Quote not found')
-    for k, v in body.dict().items():
-        setattr(q, k, v)
+    for k, v in body.dict(exclude_unset=True).items():
+        if v is not None:
+            setattr(q, k, v)
     db.commit(); db.refresh(q)
     audit(db, user_id=u.id, actor_email=u.email, action='quote_update',
           status='success', request=request, target_type='quote', target_id=quote_id)

@@ -6,7 +6,7 @@
 # END - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
 
-user_problem_statement: "HSI Employee Engagement Platform — complete Sprint G. Scope (all 3 priority buckets agreed with user): MinIO object storage, 4 PostgreSQL roles with SCRAM-SHA-256, Admin Analytics dashboard, Payroll CSV/PDF export, WCAG 2.1 AA pass, Redis pub/sub for multi-instance WebSocket fan-out."
+user_problem_statement: "HSI Employee Engagement Platform — complete Sprint G + Gap completion. Added: Admin Approvals page (/admin/approvals) with 4 tabs (Practices/Replications/TechDays/Certifications), 4 missing auto-triggers (Approved, New Practice, Award/XP milestones, Reminder), Admin certifications verify/unverify endpoints, _notify_admins helper, weekly reminder scheduler job."
 
 backend:
   - task: "Sprint G — MinIO object storage service (services/storage.py)"

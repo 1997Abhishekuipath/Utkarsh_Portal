@@ -11,6 +11,7 @@ import AdminPage from "./pages/AdminPage";
 import AdminContentPage from "./pages/AdminContentPage";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminPayoutPage from "./pages/AdminPayoutPage";
+import AdminApprovalsPage from "./pages/AdminApprovalsPage";
 import NPSCsatPage from "./pages/apps/NPSCsatPage";
 import ActionIntelligencePage from "./pages/apps/ActionIntelligencePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -67,6 +68,8 @@ function App() {
           {/* Sprint G — Analytics + Payout */}
           <Route path="/admin/analytics" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminAnalyticsPage /></ProtectedRoute>} />
           <Route path="/admin/payout" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPayoutPage /></ProtectedRoute>} />
+          {/* Approvals (Practices / Replications / Tech Days / Certs) */}
+          <Route path="/admin/approvals" element={<ProtectedRoute requiredRoles={["admin", "super_admin", "manager"]}><AdminApprovalsPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </div>

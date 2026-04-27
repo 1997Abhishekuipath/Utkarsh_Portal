@@ -814,6 +814,8 @@ def calc_tech_day_xp(attendee_count: int = 0) -> int:
     return min(25 + attendee_count * 2, 75)
 
 
+XP_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000]
+
 def add_xp(db: Session, user_id: str, xp_delta: int, source_type: str,
            source_id: Optional[str] = None, art_multiplier: float = 1.0,
            quarter: Optional[str] = None, description: Optional[str] = None) -> int:
@@ -834,7 +836,45 @@ def add_xp(db: Session, user_id: str, xp_delta: int, source_type: str,
     if user:
         user.xp_points = new_balance
     db.flush()
+    # ── Award milestone auto-trigger ──────────────────────────────────────
+    if xp_delta > 0:
+        for milestone in XP_MILESTONES:
+            if prev_balance < milestone <= new_balance:
+                try:
+                    _dispatch_notification(
+                        db,
+                        title=f'🏆 {milestone} XP Milestone Reached!',
+                        body=f'Congratulations! You have crossed {milestone} XP. Keep up the great work!',
+                        category='award',
+                        target_type='user',
+                        target_id=user_id,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
     return new_balance
+
+
+def _notify_admins(db: Session, *, title: str, body: str, category: str,
+                   deep_link: Optional[str] = None, created_by: Optional[str] = None):
+    """Dispatch notification to all active admin + super_admin users."""
+    admins = db.query(UserDB).filter(
+        UserDB.is_active == True,  # noqa: E712
+        UserDB.role.in_(['admin', 'super_admin'])
+    ).all()
+    notif = NotificationDB(
+        id=str(uuid.uuid4()), title=title, body=body, category=category,
+        target_type='role', target_id='admin',
+        is_urgent=False, deep_link=deep_link,
+        sent_at=datetime.now(timezone.utc), created_by=created_by,
+    )
+    db.add(notif)
+    db.flush()
+    for admin in admins:
+        try:
+            db.add(UserNotificationDB(notification_id=notif.id, user_id=admin.id))
+            db.flush()
+        except Exception:  # noqa: BLE001
+            db.rollback()
 
 
 def _dispatch_notification(db: Session, *, title: str, body: str, category: str,
@@ -1447,6 +1487,18 @@ def approve_user(user_id: str, body: ApproveUserReq, request: Request,
     audit(db, user_id=admin.id, actor_email=admin.email, action='approve_user',
           status='success', request=request, target_type='user', target_id=user_id,
           details={'new_role': target.role})
+    # Auto-trigger: notify the user their account has been approved
+    try:
+        _dispatch_notification(
+            db,
+            title='🎉 Welcome to HSI! Your account has been approved.',
+            body=f'Hi {target.name}, your account has been approved by an admin. You can now access all platform features.',
+            category='approved', target_type='user', target_id=user_id,
+            created_by=admin.id,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
     return {'message': 'User approved', 'role': target.role}
 
 
@@ -1986,6 +2038,18 @@ def submit_practice(body: PracticeSubmitReq, u: UserDB = Depends(get_current_use
     db.add(bp)
     db.commit()
     db.refresh(bp)
+    # Auto-trigger: notify admins about new practice submission
+    try:
+        _notify_admins(db,
+            title=f'📋 New Practice Submitted: {body.title}',
+            body=f'{u.name} submitted a new best practice in {body.pillar or "General"} pillar. Review and approve.',
+            category='reminder',
+            deep_link='/admin/approvals',
+            created_by=u.id,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
     return _bp_dict(bp, db)
 
 
@@ -2061,6 +2125,18 @@ def submit_replication(body: ReplicationSubmitReq, u: UserDB = Depends(get_curre
     db.add(rep)
     db.commit()
     db.refresh(rep)
+    # Auto-trigger: notify admins about new replication submission
+    try:
+        _notify_admins(db,
+            title='🔁 New Replication Submitted',
+            body=f'{u.name} submitted a replication for "{bp.title}" at {body.client_name}. Pending your review.',
+            category='reminder',
+            deep_link='/admin/approvals',
+            created_by=u.id,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
     return _rep_dict(rep, db)
 
 
@@ -2074,6 +2150,7 @@ def my_replications(u: UserDB = Depends(get_current_user), db: Session = Depends
 
 def _rep_dict(rep: ReplicationDB, db: Session) -> dict:
     bp = db.query(BestPracticeDB).filter(BestPracticeDB.id == rep.practice_id).first()
+    replicator = db.query(UserDB).filter(UserDB.id == rep.replicator_id).first()
     return {
         'id': rep.id, 'practice_id': rep.practice_id,
         'practice_title': bp.title if bp else '—',
@@ -2081,6 +2158,8 @@ def _rep_dict(rep: ReplicationDB, db: Session) -> dict:
         'po_value_inr': rep.po_value_inr, 'status': rep.status,
         'xp_awarded': rep.xp_awarded, 'referral_xp': rep.referral_xp,
         'notes': rep.notes,
+        'replicator_id': rep.replicator_id,
+        'replicator_name': replicator.name if replicator else 'Unknown',
         'created_at': rep.created_at.isoformat() if rep.created_at else None,
     }
 
@@ -2146,23 +2225,41 @@ def submit_tech_day(body: TechDaySubmitReq, u: UserDB = Depends(get_current_user
     db.add(td)
     db.commit()
     db.refresh(td)
-    return _td_dict(td)
+    # Auto-trigger: notify admins about new tech day submission
+    try:
+        _notify_admins(db,
+            title=f'📅 New Tech Day Submitted: {body.title}',
+            body=f'{u.name} submitted a Tech Day event at {body.client_name} with {body.attendee_count} attendees. Pending review.',
+            category='reminder',
+            deep_link='/admin/approvals',
+            created_by=u.id,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+    return _td_dict(td, db)
 
 
 @router.get('/tech-days/mine')
 def my_tech_days(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(TechDayDB).filter(TechDayDB.conductor_id == u.id).order_by(
         TechDayDB.created_at.desc()).limit(20).all()
-    return [_td_dict(r) for r in rows]
+    return [_td_dict(r, db) for r in rows]
 
 
-def _td_dict(td: TechDayDB) -> dict:
+def _td_dict(td: TechDayDB, db: Session = None) -> dict:
+    conductor_name = 'Unknown'
+    if db:
+        conductor = db.query(UserDB).filter(UserDB.id == td.conductor_id).first()
+        conductor_name = conductor.name if conductor else 'Unknown'
     return {
         'id': td.id, 'title': td.title, 'description': td.description,
         'client_name': td.client_name, 'attendee_count': td.attendee_count,
         'conducted_on': td.conducted_on.isoformat() if td.conducted_on else None,
         'status': td.status, 'xp_awarded': td.xp_awarded,
         'evidence_url': td.evidence_url,
+        'conductor_id': td.conductor_id,
+        'conductor_name': conductor_name,
         'created_at': td.created_at.isoformat() if td.created_at else None,
     }
 
@@ -2347,7 +2444,7 @@ def admin_tech_days(u: UserDB = Depends(require_role('admin', 'super_admin', 'ma
     if status != 'all':
         q = q.filter(TechDayDB.status == status)
     rows = q.order_by(TechDayDB.created_at.desc()).limit(30).all()
-    return [_td_dict(r) for r in rows]
+    return [_td_dict(r, db) for r in rows]
 
 
 @router.post('/admin/tech-days/{td_id}/approve')
@@ -2387,12 +2484,62 @@ def admin_reject_tech_day(td_id: str, request: Request,
 
 @router.get('/admin/certifications')
 def admin_certifications(u: UserDB = Depends(require_role('admin', 'super_admin')),
-                         db: Session = Depends(get_db)):
-    rows = db.query(CertificationDB).order_by(CertificationDB.created_at.desc()).limit(50).all()
-    return [{'id': r.id, 'user_id': r.user_id, 'cert_name': r.cert_name,
-             'provider': r.provider, 'xp_awarded': r.xp_awarded, 'verified': r.verified,
-             'created_at': r.created_at.isoformat() if r.created_at else None}
-            for r in rows]
+                         db: Session = Depends(get_db),
+                         verified: Optional[str] = None):
+    q = db.query(CertificationDB)
+    if verified == 'true':
+        q = q.filter(CertificationDB.verified == True)  # noqa: E712
+    elif verified == 'false':
+        q = q.filter(CertificationDB.verified == False)  # noqa: E712
+    rows = q.order_by(CertificationDB.created_at.desc()).limit(50).all()
+    result = []
+    for r in rows:
+        owner = db.query(UserDB).filter(UserDB.id == r.user_id).first()
+        result.append({
+            'id': r.id, 'user_id': r.user_id,
+            'user_name': owner.name if owner else 'Unknown',
+            'cert_name': r.cert_name,
+            'provider': r.provider, 'cert_id': r.cert_id,
+            'xp_awarded': r.xp_awarded, 'verified': r.verified,
+            'evidence_url': r.evidence_url,
+            'issued_on': r.issued_on.isoformat() if r.issued_on else None,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+        })
+    return result
+
+
+@router.post('/admin/certifications/{cert_id}/verify')
+def admin_verify_cert(cert_id: str, request: Request,
+                      u: UserDB = Depends(require_role('admin', 'super_admin')),
+                      db: Session = Depends(get_db)):
+    cert = db.query(CertificationDB).filter(CertificationDB.id == cert_id).first()
+    if not cert:
+        raise HTTPException(404, 'Certification not found')
+    cert.verified = True
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='verify_certification',
+          status='success', request=request, target_type='certification', target_id=cert_id)
+    _dispatch_notification(
+        db,
+        title='🏅 Certification Verified!',
+        body=f'Your certification "{cert.cert_name}" has been verified by an admin.',
+        category='approved', target_type='user', target_id=cert.user_id,
+        created_by=u.id,
+    )
+    db.commit()
+    return {'verified': True, 'cert_id': cert_id}
+
+
+@router.post('/admin/certifications/{cert_id}/unverify')
+def admin_unverify_cert(cert_id: str, request: Request,
+                        u: UserDB = Depends(require_role('admin', 'super_admin')),
+                        db: Session = Depends(get_db)):
+    cert = db.query(CertificationDB).filter(CertificationDB.id == cert_id).first()
+    if not cert:
+        raise HTTPException(404, 'Certification not found')
+    cert.verified = False
+    db.commit()
+    return {'unverified': True, 'cert_id': cert_id}
 
 
 # ── Admin — Analytics ─────────────────────────────────────────────────────────
@@ -3009,6 +3156,41 @@ logger.info(f"HSI EEP API ready · domain=@{ALLOWED_DOMAIN} · bcrypt={BCRYPT_RO
 # ── Sprint E — Birthday XP Scheduler ─────────────────────────────────────────
 # Awards 50 XP to every user whose birthday is today (daily at 00:05 IST).
 
+def _run_reminder_job():
+    """Weekly reminder: notify users who have pending submissions (practice/replication/tech-day)."""
+    try:
+        db = SessionLocal()
+        # Find users with pending practices
+        pending_user_ids = set()
+        for (uid,) in db.query(BestPracticeDB.author_id).filter(
+                BestPracticeDB.status == 'pending').distinct().all():
+            pending_user_ids.add(uid)
+        for (uid,) in db.query(ReplicationDB.replicator_id).filter(
+                ReplicationDB.status == 'pending').distinct().all():
+            pending_user_ids.add(uid)
+        for (uid,) in db.query(TechDayDB.conductor_id).filter(
+                TechDayDB.status == 'pending').distinct().all():
+            pending_user_ids.add(uid)
+        count = 0
+        for uid in pending_user_ids:
+            try:
+                _dispatch_notification(
+                    db,
+                    title='⏰ You have pending submissions awaiting approval',
+                    body='One or more of your submissions (practices, replications, or tech days) are still pending admin review.',
+                    category='reminder', target_type='user', target_id=uid,
+                )
+                count += 1
+            except Exception:  # noqa: BLE001
+                pass
+        db.commit()
+        logger.info(f"[ReminderJob] Sent reminder to {count} user(s) with pending submissions")
+    except Exception as e:
+        logger.error(f"[ReminderJob] Error: {e}")
+    finally:
+        db.close()
+
+
 def _run_birthday_xp_job():
     """Grant 50 XP to every user born on today's date (month + day match)."""
     try:
@@ -3049,7 +3231,8 @@ try:
     from apscheduler.schedulers.background import BackgroundScheduler
     _scheduler = BackgroundScheduler(timezone='Asia/Kolkata')
     _scheduler.add_job(_run_birthday_xp_job, 'cron', hour=0, minute=5, id='birthday_xp')
+    _scheduler.add_job(_run_reminder_job, 'cron', day_of_week='mon', hour=9, minute=0, id='weekly_reminder')
     _scheduler.start()
-    logger.info("[Scheduler] Birthday XP job scheduled at 00:05 IST daily")
+    logger.info("[Scheduler] Birthday XP job scheduled at 00:05 IST daily; Reminder job Monday 09:00 IST")
 except Exception as _sched_err:
     logger.warning(f"[Scheduler] Could not start scheduler: {_sched_err}")

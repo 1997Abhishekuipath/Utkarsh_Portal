@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://docker-start-demo.preview.emergentagent.com"
+BASE_URL = "https://pending-tasks-19.preview.emergentagent.com"
 API_BASE = f"{BASE_URL}/api"
 
 # Test credentials from /app/memory/test_credentials.md

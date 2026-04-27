@@ -74,6 +74,10 @@ export default function AdminPage() {
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70">
               <ChevronDown size={13} className="rotate-[-90deg]" aria-hidden="true" /><span>Content</span>
             </Link>
+            <Link to="/admin/approvals" data-testid="admin-approvals-link"
+              className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70">
+              <span aria-hidden="true">✅</span><span>Approvals</span>
+            </Link>
             <Link to="/admin/analytics" data-testid="admin-analytics-link"
               className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/70">
               <span aria-hidden="true">📊</span><span>Analytics</span>
@@ -118,6 +122,23 @@ export default function AdminPage() {
                 <div className="text-xs text-[#64748B]">{label}</div>
               </div>
             </div>
+          ))}
+        </div>
+
+        {/* Quick Links */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {[
+            { to: "/admin/approvals", emoji: "✅", label: "Approval Queue", desc: "Practices, Tech Days, Replications, Certs" },
+            { to: "/admin/analytics", emoji: "📊", label: "Analytics", desc: "XP trends, contributors, revenue" },
+            { to: "/admin/payout", emoji: "💰", label: "Payroll Payout", desc: "Export CSV/PDF, approve payroll" },
+            { to: "/admin/notifications", emoji: "🔔", label: "Notifications", desc: "Send broadcasts to teams" },
+          ].map(({ to, emoji, label, desc }) => (
+            <Link key={to} to={to}
+              className="bg-white border rounded-xl p-4 hover:shadow-md hover:border-[#CC0000]/30 transition-all group">
+              <span className="text-2xl mb-2 block">{emoji}</span>
+              <p className="text-sm font-semibold text-gray-900 group-hover:text-[#CC0000]">{label}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+            </Link>
           ))}
         </div>
 

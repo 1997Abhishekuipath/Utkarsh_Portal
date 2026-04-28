@@ -604,6 +604,39 @@ class VocEmailLogDB(Base):
     )
 
 
+class VocAiInsightDB(Base):
+    """Cached AI-generated insight snapshots (McKinsey SCR + pain points + action plan)."""
+    __tablename__ = 'voc_ai_insights'
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    period          = Column(String(50), nullable=True)        # "Q2 2026"
+    total_responses = Column(Integer, nullable=True)
+    nps_score       = Column(SmallInteger, nullable=True)
+    csat_score      = Column(Numeric(5, 2), nullable=True)
+    insights_json   = Column(String, nullable=False)           # raw JSON string
+    model_used      = Column(String(120), nullable=True)
+    generated_by    = Column(String, ForeignKey('users.id'), nullable=True)
+    generated_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class VocWorkflowTaskDB(Base):
+    """Detractor follow-up tasks created from NPS ≤ 6 responses."""
+    __tablename__ = 'voc_workflow_tasks'
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    response_id      = Column(String, ForeignKey('voc_responses.id'), nullable=True)
+    account_id       = Column(String, ForeignKey('voc_accounts.id'), nullable=True)
+    assignee_id      = Column(String, ForeignKey('users.id'), nullable=True)
+    status           = Column(String(20), default='open')
+    resolution_notes = Column(String, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    resolved_at      = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('open','in_progress','resolved')", name='chk_voc_wf_status'),
+        Index('idx_voc_wf_task_account', 'account_id'),
+        Index('idx_voc_wf_task_status', 'status'),
+    )
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -888,6 +921,39 @@ def _seed_voc_demo_data():
         logging.error(f"[voc-seed] Failed: {exc}")
     finally:
         db.close()
+
+
+def _seed_voc_workflow_tasks():
+    """Create workflow tasks for existing detractor responses (idempotent)."""
+    db = SessionLocal()
+    try:
+        if db.query(VocWorkflowTaskDB).first():
+            return  # already seeded
+        detractors = db.query(VocResponseDB).filter(
+            VocResponseDB.sentiment == 'detractor',
+            VocResponseDB.verbatim  != None,
+        ).limit(12).all()
+
+        manager = db.query(UserDB).filter(UserDB.role == 'manager', UserDB.is_active == True).first()
+        assignee_id = manager.id if manager else None
+
+        for r in detractors:
+            db.add(VocWorkflowTaskDB(
+                response_id=r.id,
+                account_id=r.account_id,
+                assignee_id=assignee_id,
+                status='open',
+            ))
+        db.commit()
+        logging.info(f"[voc-seed] Created {len(detractors)} workflow tasks for detractors")
+    except Exception as exc:
+        db.rollback()
+        logging.error(f"[voc-wf-seed] Failed: {exc}")
+    finally:
+        db.close()
+
+
+_seed_voc_workflow_tasks()
 
 
 _seed_voc_demo_data()
@@ -4172,9 +4238,7 @@ def voc_update_account(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  VoC Intelligence Platform — Phase 2 API Endpoints
-#  Survey Builder · Campaign Builder · Public Survey Page
-# ══════════════════════════════════════════════════════════════════════════════
+#  VoC Phase 2 API Endpoints (Survey Builder · Campaign Builder · Public Survey)
 
 # ─── Survey CRUD ─────────────────────────────────────────────────────────────
 

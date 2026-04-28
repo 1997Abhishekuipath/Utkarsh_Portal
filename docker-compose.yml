@@ -65,8 +65,8 @@ services:
       MIN_POOL_SIZE:        "${PGBOUNCER_MIN_POOL_SIZE:-5}"
       RESERVE_POOL_SIZE:    "${PGBOUNCER_RESERVE_POOL_SIZE:-10}"
       RESERVE_POOL_TIMEOUT: "${PGBOUNCER_RESERVE_POOL_TIMEOUT:-3}"
-      # Auth
-      AUTH_TYPE:            md5
+      # Auth — must match POSTGRES_INITDB_ARGS (--auth-host=scram-sha-256)
+      AUTH_TYPE:            scram-sha-256
       # Ignore startup parameters sent by psycopg2 / SQLAlchemy
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
       # Admin / stats users

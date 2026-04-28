@@ -197,6 +197,22 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 
 ---
 
+## Changelog (Sprint D continuation — Apr 2026)
+
+### Payout state machine (`incentive_calculations.status`)
+- **Transitions implemented**: `draft → approved → paid` with `on_hold` side-state.
+- **Endpoints (admin/super_admin only, all audited)**:
+  - `POST /api/admin/payout/{quarter}/approve` — bulk `draft → approved`; idempotent for paid/on_hold rows.
+  - `POST /api/admin/payout/{quarter}/mark-paid` — bulk `approved → paid`, accepts optional `payroll_ref` + `payout_date`. Returns **409** if no approved rows.
+  - `POST /api/admin/payout/calc/{calc_id}/hold` — single calc → `on_hold`. Returns **409** if status is `paid`.
+  - `POST /api/admin/payout/calc/{calc_id}/resume` — single calc `on_hold → draft` (clears approved_*). Returns **409** otherwise.
+  - `GET /api/admin/payout/{quarter}/calcs` — full list with status counts `{draft, approved, paid, on_hold}`.
+- **Frontend (`/admin/payout`)**: status legend chips, per-row Hold/Resume buttons, Mark Paid bulk with payroll-ref input, gated on `hasApproved`. Fixed broken auth (was using cookie `credentials:'include'` → now uses JWT `authHeader()`).
+- **Tests**: `/app/backend/tests/test_sprint_d_payout.py` — 12/12 passing (2 skipped when prior state already terminal). Covers state transitions, 409 guards, RBAC 403 for employees, and shape contracts.
+
+### Mock dashboard endpoint replaced
+- `GET /api/dashboard/upcoming` now serves **live** data: upcoming `tech_days` (future `conducted_on` within 60-day horizon) + computed quarterly payout date. No more hard-coded "Bajaj Finance" / "All For SPTS" placeholder rows.
+
 ## Changelog (Sprint H — Admin Console hardening · Apr 2026)
 - [x] Admin Console (`/admin/console`) end-to-end edits now persist for **EDM Slides** (incl. `tag` / `tag_color`), **Quotes** (`text` / `source`), **Pillars** (incl. **description**, gradient, tagline), and **Pillar Icons** (name, lucide_icon, route, badge).
 - [x] All 4 admin PUT endpoints use `exclude_unset=True` PATCH semantics — partial payloads no longer overwrite unspecified fields.

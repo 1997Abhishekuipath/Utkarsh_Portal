@@ -156,6 +156,7 @@ services:
       OTP_LENGTH:         ${OTP_LENGTH:-6}
       OTP_TTL_MIN:        ${OTP_TTL_MIN:-10}
       OTP_MAX_ATTEMPTS:   ${OTP_MAX_ATTEMPTS:-3}
+      DEMO_OTP:           ${DEMO_OTP:-000000}
       REDIS_URL:          ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS:       ${CORS_ORIGINS:-*}
       AWS_REGION:         ${AWS_REGION:-ap-south-1}
@@ -193,9 +194,9 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/')"]
       interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # ── React Frontend ─────────────────────────────────────────────────────────
   frontend:

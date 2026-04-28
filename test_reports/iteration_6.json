@@ -1,0 +1,46 @@
+{
+  "summary": "Sprint D verification — payout state machine + live /dashboard/upcoming. 14/14 pytest tests PASS covering: live upcoming endpoint (no hard-coded mock tokens), quarters list, calcs shape, approve / hold / resume / mark-paid state transitions, 409 guards for paid-hold and no-approved-rows, and RBAC 403 on all /api/admin/payout/* for employee token. Frontend /admin/payout loads, renders correct status counts (draft·0, approved·0, paid·3, on_hold·0 on 2026-Q2), Mark Paid button is disabled when approved=0 (correct), Approve button enabled, payroll-ref input editable, quarter select populated. Full Hold→Resume UI round-trip could not be exercised live because all 3 seed rows in 2026-Q2 are currently 'paid' (backend test marked them during pytest run) — backend round-trip proven via pytest test_hold_then_resume_roundtrip.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/admin/payout quarter select",
+        "issues": ["Hydration warning in console: <span> as child of <option> (emergent dev tooling injects an x-dynamic <span> inside <option> — harmless in dev but will break option text in some browsers; verify this disappears in production build)."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sprint_d_payout.py",
+    "/app/test_reports/pytest/sprint_d_payout.xml"
+  ],
+  "action_items": [
+    "Optional: reseed xp_ledger + reset incentive_calculations to non-paid for 2026-Q2 so hold/resume UI buttons render again for manual QA (the pytest test_mark_paid_and_409 marks all rows paid during run). A test-teardown reset or a dedicated QA quarter '2026-Q0' populated on startup would isolate seed data from tests.",
+    "Optional: investigate 2 transient 401s on initial /admin/payout load (pre-auth fetch race in TopBar notification bell — same class of issue flagged in iteration_5).",
+    "Optional: wrap the <option> label in a plain string (e.g. `{q.quarter} · ...`) so the emergent dev-tooling doesn't inject <span> inside <option> — or add x-excluded to silence the hydration warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py line ~3113 _quarter_payout_rows does a full users-cross-xp_ledger aggregation per endpoint call (approve, mark-paid, single-payout, csv, pdf). Approve then iterates items and does an N+1 query for each user's IncentiveCalcDB row — at scale (hundreds of users) this is N+1. Consider a single SELECT to pre-fetch existing incentive_calculations rows keyed by (user_id, quarter).",
+    "server.py admin_payout_approve re-writes amount_inr on every call even if the row is already paid — harmless because the `if inc.status in (None,'draft')` guard protects status but the `inc.amount_inr = str(i['amount_inr'])` line sits OUTSIDE the guard. Move it inside the guard to make 'approve' idempotent for paid rows.",
+    "server.py admin_payout_mark_paid accepts arbitrary payroll_ref string without validation — consider regex `^[A-Z0-9-]{3,40}$` or limit length so payroll systems don't receive unescaped input.",
+    "server.py:3586 total — file exceeds the 700-line guideline (5x over). Payout/state-machine block (3110-3420, ~310 lines) is a clean split candidate into /app/backend/routers/payout.py.",
+    "AdminPayoutPage.jsx uses window.alert/window.confirm for destructive actions (line ~70 mark-paid confirm). Consider replacing with the existing toast/modal pattern for consistency.",
+    "Status machine has no 'reject' or 'cancel' terminal state — on_hold is the only escape hatch, and resume forces draft. If finance needs to permanently cancel a calc, there's no dedicated transition (currently must hold→resume→skip on approve which is awkward)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sprint_d_payout.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 pytest)",
+    "frontend": "100% (all visible UI elements render and behave correctly for the current payout state)"
+  },
+  "test_credentials": "Admin: admin@hitachi-systems.com / Admin@123; Employee: employee@hitachi-systems.com / Employee@123. DEMO_OTP=000000. MFA_ENABLED=true in backend/.env. Login flow is 2-step: POST /api/auth/login then POST /api/auth/verify-otp with code=000000.",
+  "seed_data_creation": "Tests transitioned incentive_calculations rows for quarter 2026-Q2 to status='paid' with payroll_ref='TEST-2026-Q2' (from test_mark_paid_and_409_when_empty) and payroll_ref='PAYROLL-TEST-001' from earlier manual curl. All 3 seed users (Arjun, Priya, Kiran) now show paid status. To re-test UI hold/resume path, reseed xp_ledger or reset these 3 calc rows to draft.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Sprint D state machine + live upcoming fully verified. Test file /app/backend/tests/test_sprint_d_payout.py is runnable via `REACT_APP_BACKEND_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2) python -m pytest backend/tests/test_sprint_d_payout.py -v`. UI route /admin/payout has all data-testids listed in the review request, all functional. Payout state machine enforced correctly (409s on illegal transitions). Note: after running pytest suite, all 2026-Q2 rows become 'paid' — to see hold/resume buttons in UI you must reset status to 'draft' or 'approved' first (e.g. via psql: UPDATE incentive_calculations SET status='draft', payout_date=NULL, payroll_ref=NULL WHERE quarter='2026-Q2';)."
+}

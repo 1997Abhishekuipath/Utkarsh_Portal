@@ -1,60 +1,88 @@
 import React, { useState, useEffect, useCallback } from "react";
 import TopBar from "../components/TopBar";
+import { useAuth } from "../contexts/AuthContext";
 import {
   IndianRupee, Download, FileText, CheckCircle2, AlertCircle, Users,
-  Loader2, ShieldCheck, Calendar
+  Loader2, ShieldCheck, Calendar, BadgeCheck, PauseCircle, Play, Banknote
 } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
+const STATUS_COLOR = {
+  draft:    "bg-gray-100  text-gray-700  border-gray-200",
+  approved: "bg-blue-50   text-blue-700  border-blue-200",
+  paid:     "bg-green-50  text-green-700 border-green-200",
+  on_hold:  "bg-amber-50  text-amber-700 border-amber-200",
+};
 
 export default function AdminPayoutPage() {
+  const { authHeader } = useAuth();
   const [quarters, setQuarters] = useState([]);
   const [active, setActive] = useState(null);
   const [data, setData] = useState(null);
+  const [calcs, setCalcs] = useState({ counts: {}, items: [] });
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(null); // 'csv' | 'pdf' | null
-  const [approving, setApproving] = useState(false);
+  const [downloading, setDownloading] = useState(null);
+  const [busy, setBusy] = useState(null);   // 'approve' | 'pay' | calcId
   const [toast, setToast] = useState(null);
+  const [payrollRef, setPayrollRef] = useState("");
 
-  const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500); };
+  const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2800); };
+
+  const apiGet = useCallback(async (path) => {
+    const res = await fetch(`${BACKEND}${path}`, { headers: { ...authHeader() } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }, [authHeader]);
+
+  const apiPost = useCallback(async (path, body = null) => {
+    const res = await fetch(`${BACKEND}${path}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : null,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+    return res.json();
+  }, [authHeader]);
 
   const loadQuarters = useCallback(async () => {
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payout/quarters`, { credentials: "include" });
-      if (res.ok) {
-        const qs = await res.json();
-        setQuarters(qs);
-        if (qs.length && !active) setActive(qs[0].quarter);
-      }
-    } catch { /* silent */ }
-  }, [active]);
+      const qs = await apiGet(`/api/admin/payout/quarters`);
+      setQuarters(qs);
+      if (qs.length && !active) setActive(qs[0].quarter);
+    } catch { /* ignore */ }
+  }, [apiGet, active]);
 
-  const loadPayout = useCallback(async (q) => {
+  const loadAll = useCallback(async (q) => {
     if (!q) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payout/${q}`, { credentials: "include" });
-      if (res.ok) setData(await res.json());
+      const [summary, list] = await Promise.all([
+        apiGet(`/api/admin/payout/${q}`),
+        apiGet(`/api/admin/payout/${q}/calcs`),
+      ]);
+      setData(summary);
+      setCalcs(list);
+    } catch (err) {
+      showToast(`Load failed: ${err.message}`, "error");
     } finally { setLoading(false); }
-  }, []);
+  }, [apiGet]);
 
   useEffect(() => { loadQuarters(); }, [loadQuarters]);
-  useEffect(() => { if (active) loadPayout(active); }, [active, loadPayout]);
+  useEffect(() => { if (active) loadAll(active); }, [active, loadAll]);
 
   const download = async (type) => {
     if (!active) return;
     setDownloading(type);
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payout/${active}/export.${type}`, { credentials: "include" });
+      const res = await fetch(`${BACKEND}/api/admin/payout/${active}/export.${type}`, {
+        headers: { ...authHeader() },
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `payout_${active}.${type}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = `payout_${active}.${type}`;
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
       showToast(`${type.toUpperCase()} downloaded`);
     } catch (err) {
@@ -64,30 +92,66 @@ export default function AdminPayoutPage() {
 
   const approve = async () => {
     if (!active) return;
-    if (!window.confirm(`Approve payout register for ${active}? This marks all ${data?.users || 0} users as approved.`)) return;
-    setApproving(true);
+    if (!window.confirm(`Approve payout register for ${active}? This freezes the calculation.`)) return;
+    setBusy("approve");
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payout/${active}/approve`, {
-        method: "POST", credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json();
+      const d = await apiPost(`/api/admin/payout/${active}/approve`);
       showToast(`Approved ${d.approved} payout rows for ${d.quarter}`);
-      loadPayout(active);
+      loadAll(active);
     } catch (err) {
       showToast(`Approve failed: ${err.message}`, "error");
-    } finally { setApproving(false); }
+    } finally { setBusy(null); }
   };
+
+  const markPaid = async () => {
+    if (!active) return;
+    if (!window.confirm(`Mark all approved rows for ${active} as PAID? This cannot be undone except via DB.`)) return;
+    setBusy("pay");
+    try {
+      const d = await apiPost(`/api/admin/payout/${active}/mark-paid`, {
+        payroll_ref: payrollRef || null,
+      });
+      showToast(`✓ Paid ${d.paid} rows · ref ${d.payroll_ref}`);
+      setPayrollRef("");
+      loadAll(active);
+    } catch (err) {
+      showToast(`Mark paid failed: ${err.message}`, "error");
+    } finally { setBusy(null); }
+  };
+
+  const hold = async (calcId) => {
+    setBusy(calcId);
+    try {
+      await apiPost(`/api/admin/payout/calc/${calcId}/hold`);
+      showToast("Calc placed on hold");
+      loadAll(active);
+    } catch (err) {
+      showToast(`Hold failed: ${err.message}`, "error");
+    } finally { setBusy(null); }
+  };
+
+  const resume = async (calcId) => {
+    setBusy(calcId);
+    try {
+      await apiPost(`/api/admin/payout/calc/${calcId}/resume`);
+      showToast("Calc resumed → back to draft");
+      loadAll(active);
+    } catch (err) {
+      showToast(`Resume failed: ${err.message}`, "error");
+    } finally { setBusy(null); }
+  };
+
+  const counts = calcs.counts || {};
+  const hasApproved = (counts.approved || 0) > 0;
 
   return (
     <div className="min-h-screen bg-[#F1F5F9]">
       {toast && (
-        <div
-          role="status" aria-live="polite"
+        <div role="status" aria-live="polite"
+          data-testid="payout-toast"
           className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2
-          ${toast.type === "error" ? "bg-red-50 text-red-700 border border-red-200" : "bg-green-50 text-green-700 border border-green-200"}`}
-        >
-          {toast.type === "error" ? <AlertCircle size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
+          ${toast.type === "error" ? "bg-red-50 text-red-700 border border-red-200" : "bg-green-50 text-green-700 border border-green-200"}`}>
+          {toast.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
           {toast.msg}
         </div>
       )}
@@ -96,19 +160,14 @@ export default function AdminPayoutPage() {
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-white text-2xl font-bold">Incentive Payout Register</h1>
-            <p className="text-white/70 text-sm mt-1">Export quarterly CSV / PDF · Approve for payroll</p>
+            <p className="text-white/70 text-sm mt-1">Quarterly state machine · Draft → Approved → Paid (or On Hold)</p>
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor="payout-quarter-select" className="text-white/80 text-xs font-medium">
-              Quarter
-            </label>
-            <select
-              id="payout-quarter-select"
-              value={active || ""}
+            <label htmlFor="payout-quarter-select" className="text-white/80 text-xs font-medium">Quarter</label>
+            <select id="payout-quarter-select" value={active || ""}
               onChange={(e) => setActive(e.target.value)}
               data-testid="payout-quarter-select"
-              className="bg-white text-gray-800 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/70"
-            >
+              className="bg-white text-gray-800 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/70">
               {quarters.length === 0 && <option value="">— no data yet —</option>}
               {quarters.map(q => (
                 <option key={q.quarter} value={q.quarter}>
@@ -122,138 +181,150 @@ export default function AdminPayoutPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Summary strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Quarter</div>
-            <div className="text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2">
-              <Calendar size={18} className="text-[#CC0000]" aria-hidden="true" /> {active || "—"}
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Users</div>
-            <div className="text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2">
-              <Users size={18} className="text-blue-500" aria-hidden="true" /> {data?.users ?? 0}
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Total Payout</div>
-            <div className="text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2 tabular-nums">
-              <IndianRupee size={18} className="text-green-500" aria-hidden="true" />
-              {(data?.total_inr ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Rate (Repl w/ PO)</div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">
-              ₹{data?.rates?.replication ?? "—"} <span className="text-xs text-gray-400">/XP</span>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <SummaryTile label="Quarter" icon={<Calendar size={18} className="text-[#CC0000]" />} value={active || "—"} />
+          <SummaryTile label="Users" icon={<Users size={18} className="text-blue-500" />} value={data?.users ?? 0} />
+          <SummaryTile label="Total Payout" icon={<IndianRupee size={18} className="text-green-500" />}
+            value={(data?.total_inr ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })} mono />
+          <SummaryTile label="Approved" icon={<BadgeCheck size={18} className="text-blue-500" />} value={counts.approved || 0} />
+          <SummaryTile label="Paid" icon={<Banknote size={18} className="text-green-600" />} value={counts.paid || 0} />
+        </div>
+
+        {/* Status legend */}
+        <div className="flex flex-wrap gap-2 text-xs">
+          {Object.entries(counts).map(([k, v]) => (
+            <span key={k} className={`px-2.5 py-1 rounded-full border ${STATUS_COLOR[k] || ""}`}>
+              {k.replace("_", " ")} · <span className="font-semibold tabular-nums">{v}</span>
+            </span>
+          ))}
         </div>
 
         {/* Actions */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-wrap gap-3 items-center">
-          <button
-            type="button"
-            onClick={() => download("csv")}
+          <button type="button" onClick={() => download("csv")}
             disabled={!active || downloading !== null}
             data-testid="payout-export-csv"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-[#CC0000] focus:ring-offset-2"
-          >
-            {downloading === "csv"
-              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              : <Download size={14} aria-hidden="true" />}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60">
+            {downloading === "csv" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export CSV
           </button>
-          <button
-            type="button"
-            onClick={() => download("pdf")}
+          <button type="button" onClick={() => download("pdf")}
             disabled={!active || downloading !== null}
             data-testid="payout-export-pdf"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#CC0000] rounded-lg hover:bg-red-700 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-[#CC0000] focus:ring-offset-2"
-          >
-            {downloading === "pdf"
-              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              : <FileText size={14} aria-hidden="true" />}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#CC0000] rounded-lg hover:bg-red-700 disabled:opacity-60">
+            {downloading === "pdf" ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
             Export PDF
           </button>
+
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={approve}
-            disabled={!active || approving || !data?.users}
+
+          <button type="button" onClick={approve}
+            disabled={!active || busy === "approve" || !data?.users}
             data-testid="payout-approve-btn"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-          >
-            {approving
-              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              : <ShieldCheck size={14} aria-hidden="true" />}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60">
+            {busy === "approve" ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
             Approve Register
+          </button>
+
+          <input type="text" value={payrollRef} onChange={(e) => setPayrollRef(e.target.value)}
+            placeholder="Payroll ref (optional)"
+            data-testid="payroll-ref-input"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 w-44 focus:outline-none focus:ring-2 focus:ring-green-300" />
+          <button type="button" onClick={markPaid}
+            disabled={!active || busy === "pay" || !hasApproved}
+            data-testid="payout-mark-paid-btn"
+            title={hasApproved ? "Mark all approved rows as paid" : "Approve register first"}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-60">
+            {busy === "pay" ? <Loader2 size={14} className="animate-spin" /> : <Banknote size={14} />}
+            Mark Paid
           </button>
         </div>
 
-        {/* Table */}
+        {/* Calc table with status + per-row actions */}
         <section data-testid="payout-table" className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   <th className="px-5 py-2.5">Employee</th>
-                  <th className="px-5 py-2.5">Dept</th>
-                  <th className="px-5 py-2.5 text-right">XP Orig</th>
-                  <th className="px-5 py-2.5 text-right">XP Rep</th>
-                  <th className="px-5 py-2.5 text-right">XP Tech</th>
-                  <th className="px-5 py-2.5 text-right">XP Other</th>
+                  <th className="px-5 py-2.5">Status</th>
                   <th className="px-5 py-2.5 text-right">XP Total</th>
                   <th className="px-5 py-2.5 text-right">Amount (₹)</th>
+                  <th className="px-5 py-2.5">Payroll Ref</th>
+                  <th className="px-5 py-2.5">Paid On</th>
+                  <th className="px-5 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400 text-sm">
-                    <Loader2 size={18} className="animate-spin inline-block" aria-hidden="true" /> Loading…
+                  <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400 text-sm">
+                    <Loader2 size={18} className="animate-spin inline-block" /> Loading…
                   </td></tr>
-                ) : (data?.items || []).length === 0 ? (
-                  <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400 text-sm">
-                    No payout data for this quarter
+                ) : (calcs.items || []).length === 0 ? (
+                  <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400 text-sm">
+                    No incentive calculations yet — Approve Register to generate rows for this quarter.
                   </td></tr>
                 ) : (
-                  data.items.map((i) => (
-                    <tr key={i.user_id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                      <td className="px-5 py-3">
-                        <div className="font-medium text-gray-800">{i.name}</div>
-                        <div className="text-xs text-gray-400">{i.email}</div>
-                      </td>
-                      <td className="px-5 py-3 text-gray-600">{i.department || "—"}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">{i.xp_original}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">{i.xp_replication}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">{i.xp_tech_day}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">{i.xp_other}</td>
-                      <td className="px-5 py-3 text-right tabular-nums font-semibold">{i.xp_total}</td>
-                      <td className="px-5 py-3 text-right tabular-nums font-bold text-[#CC0000]">
-                        ₹{i.amount_inr.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))
+                  calcs.items.map((c) => {
+                    const xpTotal = c.xp_original + c.xp_replication + c.xp_tech_day + c.xp_other;
+                    return (
+                      <tr key={c.id} className="border-t border-gray-50 hover:bg-gray-50/50" data-testid={`calc-row-${c.id}`}>
+                        <td className="px-5 py-3">
+                          <div className="font-medium text-gray-800">{c.name}</div>
+                          <div className="text-xs text-gray-400">{c.email}</div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span data-testid={`calc-status-${c.id}`}
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_COLOR[c.status] || ""}`}>
+                            {c.status?.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right tabular-nums font-semibold">{xpTotal}</td>
+                        <td className="px-5 py-3 text-right tabular-nums font-bold text-[#CC0000]">
+                          ₹{c.amount_inr.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-5 py-3 text-xs text-gray-500">{c.payroll_ref || "—"}</td>
+                        <td className="px-5 py-3 text-xs text-gray-500">{c.payout_date || "—"}</td>
+                        <td className="px-5 py-3 text-right">
+                          {c.status === "paid" ? (
+                            <span className="text-xs text-gray-400">—</span>
+                          ) : c.status === "on_hold" ? (
+                            <button type="button" onClick={() => resume(c.id)}
+                              disabled={busy === c.id}
+                              data-testid={`calc-resume-${c.id}`}
+                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                              {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                              Resume
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => hold(c.id)}
+                              disabled={busy === c.id}
+                              data-testid={`calc-hold-${c.id}`}
+                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+                              {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <PauseCircle size={11} />}
+                              Hold
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
-              {data?.items?.length > 0 && (
-                <tfoot>
-                  <tr className="bg-gray-50 border-t border-gray-200">
-                    <td colSpan={6} className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Quarter Total
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums font-bold text-gray-800">
-                      {data.items.reduce((s, x) => s + x.xp_total, 0).toLocaleString()}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums font-bold text-[#CC0000]">
-                      ₹{data.total_inr.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
             </table>
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+function SummaryTile({ label, icon, value, mono }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+      <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">{label}</div>
+      <div className={`text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2 ${mono ? "tabular-nums" : ""}`}>
+        {icon} {value}
       </div>
     </div>
   );

@@ -1569,11 +1569,56 @@ def pending(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)
 
 
 @router.get('/dashboard/upcoming')
-def upcoming(_u: UserDB = Depends(get_current_user)):
-    return [
-        {'id': '1', 'title': 'Tech Day — All For SPTS', 'description': 'Bangalore, GEC • 2 Hrs', 'date': 'Apr 30, 9:00 AM', 'color': 'red'},
-        {'id': '2', 'title': 'Visitor — Bajaj Finance',  'description': '6 Guests',               'date': 'Apr 30, 2:00 PM', 'color': 'blue'},
-        {'id': '3', 'title': '365 Incentive Payout',     'description': 'Finance Dept',            'date': 'May 1',           'color': 'green'}
+def upcoming(u: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Live upcoming events sourced from tech_days + payout calendar."""
+    from datetime import date, timedelta
+    today = date.today()
+    horizon = today + timedelta(days=60)
+
+    # Upcoming Tech Days conducted by ANY user (visible to all) within horizon
+    tds = (db.query(TechDayDB, UserDB)
+             .join(UserDB, UserDB.id == TechDayDB.conductor_id)
+             .filter(TechDayDB.conducted_on >= today,
+                     TechDayDB.conducted_on <= horizon)
+             .order_by(TechDayDB.conducted_on.asc())
+             .limit(5).all())
+
+    items = []
+    for td, conductor in tds:
+        items.append({
+            'id': td.id,
+            'title': f'Tech Day — {td.title}',
+            'description': f'{conductor.name} · {td.client_name or "Internal"}'
+                           + (f" · {td.attendee_count} attendees" if td.attendee_count else ""),
+            'date': td.conducted_on.strftime('%b %d') if td.conducted_on else '',
+            'color': 'red',
+            'type': 'tech_day',
+        })
+
+    # Quarterly payout target date (last day of current quarter)
+    q = current_quarter()                               # e.g. '2026-Q2'
+    try:
+        yr_str, qn_str = q.split('-Q', 1)
+        qn = int(qn_str)
+        yr = int(yr_str)
+        end_month = qn * 3                              # 3, 6, 9, 12
+        payout_due = date(yr, end_month, 28)
+    except Exception:
+        payout_due = today + timedelta(days=30)
+    if payout_due >= today:
+        items.append({
+            'id': f'payout-{q}',
+            'title': f'{q} Incentive Payout',
+            'description': 'Finance · Quarterly settlement',
+            'date': payout_due.strftime('%b %d'),
+            'color': 'green',
+            'type': 'payout',
+        })
+
+    return items[:5] if items else [
+        {'id': 'empty-1', 'title': 'No upcoming events',
+         'description': 'Submit a tech day to populate this list',
+         'date': '—', 'color': 'gray', 'type': 'empty'}
     ]
 
 
@@ -3252,17 +3297,127 @@ def admin_payout_approve(quarter: str, request: Request,
                 amount_inr=str(i['amount_inr']),
             )
             db.add(inc)
-        inc.status      = 'approved'
-        inc.approved_by = u.id
-        inc.approved_at = now
-        inc.amount_inr  = str(i['amount_inr'])
-        n += 1
+        # State machine: only transition draft → approved (skip on_hold/paid)
+        if inc.status in (None, 'draft'):
+            inc.status      = 'approved'
+            inc.approved_by = u.id
+            inc.approved_at = now
+            inc.amount_inr  = str(i['amount_inr'])
+            n += 1
     db.commit()
     audit(db, user_id=u.id, actor_email=u.email, action='payout_approve',
           status='success', request=request,
           target_type='quarter', target_id=quarter,
           details={'users': n, 'total_inr': sum(i['amount_inr'] for i in items)})
     return {'approved': n, 'quarter': quarter}
+
+
+# ── Payout state-machine: draft → approved → paid (+ on_hold side-state) ──────
+class PayoutMarkPaidReq(BaseModel):
+    payroll_ref: Optional[str] = None              # e.g. PAYROLL-Q1-2026
+    payout_date: Optional[str] = None              # YYYY-MM-DD; defaults to today
+
+
+@router.post('/admin/payout/{quarter}/mark-paid')
+def admin_payout_mark_paid(quarter: str, body: PayoutMarkPaidReq, request: Request,
+                           u: UserDB = Depends(require_role('admin', 'super_admin')),
+                           db: Session = Depends(get_db)):
+    """Bulk-transition all approved rows for the quarter to 'paid'."""
+    from datetime import date as _date
+    try:
+        pd = _date.fromisoformat(body.payout_date) if body.payout_date else _date.today()
+    except Exception:
+        raise HTTPException(400, 'Invalid payout_date (YYYY-MM-DD)')
+
+    rows = (db.query(IncentiveCalcDB)
+              .filter(IncentiveCalcDB.quarter == quarter,
+                      IncentiveCalcDB.status == 'approved').all())
+    if not rows:
+        raise HTTPException(409, f'No approved rows for {quarter}. Approve register first.')
+    for r in rows:
+        r.status      = 'paid'
+        r.payout_date = pd
+        r.payroll_ref = body.payroll_ref or r.payroll_ref or f'PAYROLL-{quarter}'
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='payout_mark_paid',
+          status='success', request=request,
+          target_type='quarter', target_id=quarter,
+          details={'paid': len(rows), 'payroll_ref': body.payroll_ref,
+                   'payout_date': pd.isoformat()})
+    return {'paid': len(rows), 'quarter': quarter,
+            'payroll_ref': body.payroll_ref or f'PAYROLL-{quarter}',
+            'payout_date': pd.isoformat()}
+
+
+@router.post('/admin/payout/calc/{calc_id}/hold')
+def admin_payout_hold(calc_id: str, request: Request,
+                      u: UserDB = Depends(require_role('admin', 'super_admin')),
+                      db: Session = Depends(get_db)):
+    """Place a single calc on hold — withdraws it from the next mark-paid sweep."""
+    inc = db.query(IncentiveCalcDB).filter(IncentiveCalcDB.id == calc_id).first()
+    if not inc:
+        raise HTTPException(404, 'Calculation not found')
+    if inc.status == 'paid':
+        raise HTTPException(409, 'Cannot hold a paid calculation')
+    prev = inc.status
+    inc.status = 'on_hold'
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='payout_hold',
+          status='success', request=request,
+          target_type='incentive_calc', target_id=calc_id,
+          details={'previous_status': prev, 'user_id': inc.user_id, 'quarter': inc.quarter})
+    return {'id': calc_id, 'status': 'on_hold', 'previous_status': prev}
+
+
+@router.post('/admin/payout/calc/{calc_id}/resume')
+def admin_payout_resume(calc_id: str, request: Request,
+                        u: UserDB = Depends(require_role('admin', 'super_admin')),
+                        db: Session = Depends(get_db)):
+    """Resume a held calc — back to draft so it can be re-approved."""
+    inc = db.query(IncentiveCalcDB).filter(IncentiveCalcDB.id == calc_id).first()
+    if not inc:
+        raise HTTPException(404, 'Calculation not found')
+    if inc.status != 'on_hold':
+        raise HTTPException(409, f'Calc status is "{inc.status}", expected "on_hold"')
+    inc.status      = 'draft'
+    inc.approved_at = None
+    inc.approved_by = None
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='payout_resume',
+          status='success', request=request,
+          target_type='incentive_calc', target_id=calc_id,
+          details={'user_id': inc.user_id, 'quarter': inc.quarter})
+    return {'id': calc_id, 'status': 'draft'}
+
+
+@router.get('/admin/payout/{quarter}/calcs')
+def admin_payout_calcs(quarter: str,
+                       u: UserDB = Depends(require_role('admin', 'super_admin')),
+                       db: Session = Depends(get_db),
+                       status_filter: Optional[str] = None):
+    """List incentive_calculations rows for a quarter with current status."""
+    q = (db.query(IncentiveCalcDB, UserDB)
+           .join(UserDB, UserDB.id == IncentiveCalcDB.user_id)
+           .filter(IncentiveCalcDB.quarter == quarter))
+    if status_filter:
+        q = q.filter(IncentiveCalcDB.status == status_filter)
+    rows = q.order_by(IncentiveCalcDB.created_at.asc()).all()
+    counts = {'draft': 0, 'approved': 0, 'paid': 0, 'on_hold': 0}
+    out = []
+    for inc, usr in rows:
+        counts[inc.status] = counts.get(inc.status, 0) + 1
+        out.append({
+            'id': inc.id, 'user_id': usr.id, 'name': usr.name, 'email': usr.email,
+            'employee_id': usr.employee_id or '', 'department': usr.department or '',
+            'quarter': inc.quarter, 'status': inc.status,
+            'xp_original': inc.xp_original, 'xp_replication': inc.xp_replication,
+            'xp_tech_day': inc.xp_tech_day, 'xp_other': inc.xp_other,
+            'amount_inr': float(inc.amount_inr or 0),
+            'approved_at': inc.approved_at.isoformat() if inc.approved_at else None,
+            'payout_date': inc.payout_date.isoformat() if inc.payout_date else None,
+            'payroll_ref': inc.payroll_ref or '',
+        })
+    return {'quarter': quarter, 'counts': counts, 'items': out}
 
 
 # ── WebSocket endpoint for clients ────────────────────────────────────────────

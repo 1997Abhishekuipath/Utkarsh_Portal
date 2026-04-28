@@ -1,473 +1,522 @@
 #!/usr/bin/env python3
 """
-HSI Employee Engagement Platform - Sprint F Backend API Testing
-Tests Sprint F features: Sentry integration, Request-ID middleware, health endpoint, profile updates
+VoC Intelligence Platform Phase 1 Backend Testing
+Tests all 8 VoC endpoints as specified in the review request.
 """
 
 import requests
 import json
-import time
-import re
-from datetime import datetime
+import sys
+from typing import Dict, Any, Optional
 
 # Configuration
-BASE_URL = "https://init-demo-2.preview.emergentagent.com"
-API_BASE = f"{BASE_URL}/api"
-
-# Test credentials from /app/memory/test_credentials.md
+BASE_URL = "https://optimistic-chaplygin-3.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@hitachi-systems.com"
 ADMIN_PASSWORD = "Admin@123"
+DEMO_OTP = "000000"
 
-class SprintFTester:
+class VoCTester:
     def __init__(self):
         self.session = requests.Session()
-        self.auth_token = None
+        self.access_token: Optional[str] = None
         self.test_results = []
         
-    def log_result(self, test_name, success, details="", response_data=None):
-        """Log test result with details"""
+    def log_test(self, test_name: str, success: bool, details: str = ""):
+        """Log test result"""
         status = "✅ PASS" if success else "❌ FAIL"
-        result = {
+        self.test_results.append({
             "test": test_name,
-            "status": status,
-            "details": details,
-            "timestamp": datetime.now().isoformat()
-        }
-        if response_data:
-            result["response_data"] = response_data
-        self.test_results.append(result)
+            "success": success,
+            "details": details
+        })
         print(f"{status}: {test_name}")
         if details:
-            print(f"   Details: {details}")
-        if not success and response_data:
-            print(f"   Response: {response_data}")
-        print()
-
-    def test_root_endpoint(self):
-        """Test 1: GET /api/ - verify Sprint F message and metadata"""
+            print(f"    {details}")
+    
+    def authenticate(self) -> bool:
+        """Perform authentication flow"""
+        print("\n🔐 Starting Authentication Flow...")
+        
+        # Step 1: Login
         try:
-            response = self.session.get(f"{API_BASE}/")
+            login_response = self.session.post(
+                f"{BASE_URL}/auth/login",
+                json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+                headers={"Content-Type": "application/json"}
+            )
             
-            if response.status_code == 200:
-                data = response.json()
+            if login_response.status_code != 200:
+                self.log_test("Login Request", False, f"Status: {login_response.status_code}, Response: {login_response.text}")
+                return False
                 
-                # Check message
-                expected_message = "HSI Employee Engagement Platform API v2.0"
-                if data.get("message") == expected_message:
-                    message_check = True
-                    message_details = f"Message correct: '{expected_message}'"
+            login_data = login_response.json()
+            
+            if not login_data.get("requires_otp"):
+                self.log_test("Login Request", False, "Expected requires_otp=true")
+                return False
+                
+            otp_id = login_data.get("otp_id")
+            if not otp_id:
+                self.log_test("Login Request", False, "Missing otp_id in response")
+                return False
+                
+            self.log_test("Login Request", True, f"OTP ID received: {otp_id}")
+            
+        except Exception as e:
+            self.log_test("Login Request", False, f"Exception: {str(e)}")
+            return False
+        
+        # Step 2: Verify OTP
+        try:
+            otp_response = self.session.post(
+                f"{BASE_URL}/auth/verify-otp",
+                json={
+                    "email": ADMIN_EMAIL,
+                    "otp_id": otp_id,
+                    "code": DEMO_OTP
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if otp_response.status_code != 200:
+                self.log_test("OTP Verification", False, f"Status: {otp_response.status_code}, Response: {otp_response.text}")
+                return False
+                
+            otp_data = otp_response.json()
+            self.access_token = otp_data.get("access_token")
+            
+            if not self.access_token:
+                self.log_test("OTP Verification", False, "Missing access_token in response")
+                return False
+                
+            self.log_test("OTP Verification", True, "Access token received")
+            return True
+            
+        except Exception as e:
+            self.log_test("OTP Verification", False, f"Exception: {str(e)}")
+            return False
+    
+    def test_unauthorized_access(self):
+        """Test that endpoints require authorization"""
+        print("\n🔒 Testing Authorization Requirements...")
+        
+        test_endpoints = [
+            "/voc/dashboard/kpis",
+            "/voc/dashboard/trend",
+            "/voc/dashboard/verbatims",
+            "/voc/accounts"
+        ]
+        
+        for endpoint in test_endpoints:
+            try:
+                response = requests.get(f"{BASE_URL}{endpoint}")
+                if response.status_code == 401:
+                    self.log_test(f"Unauthorized Access - {endpoint}", True, "Correctly returns 401")
                 else:
-                    message_check = False
-                    message_details = f"Expected: '{expected_message}', Got: '{data.get('message')}'"
-                
-                # Check sentry_active
-                sentry_active = data.get("sentry_active")
-                if sentry_active == False:
-                    sentry_check = True
-                    sentry_details = "sentry_active=false (correct)"
-                else:
-                    sentry_check = False
-                    sentry_details = f"Expected sentry_active=false, Got: {sentry_active}"
-                
-                # Check sprint
-                sprint = data.get("sprint")
-                if sprint == "F":
-                    sprint_check = True
-                    sprint_details = "sprint='F' (correct)"
-                else:
-                    sprint_check = False
-                    sprint_details = f"Expected sprint='F', Got: '{sprint}'"
-                
-                overall_success = message_check and sentry_check and sprint_check
-                details = f"{message_details}; {sentry_details}; {sprint_details}"
-                
-                self.log_result("GET /api/ - Root endpoint metadata", overall_success, details, data)
-            else:
-                self.log_result("GET /api/ - Root endpoint metadata", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("GET /api/ - Root endpoint metadata", False, f"Exception: {str(e)}")
-
-    def test_health_endpoint(self):
-        """Test 2: GET /api/health - verify health checks"""
+                    self.log_test(f"Unauthorized Access - {endpoint}", False, f"Expected 401, got {response.status_code}")
+            except Exception as e:
+                self.log_test(f"Unauthorized Access - {endpoint}", False, f"Exception: {str(e)}")
+    
+    def make_authenticated_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
+        """Make authenticated request"""
+        headers = kwargs.get('headers', {})
+        headers['Authorization'] = f'Bearer {self.access_token}'
+        kwargs['headers'] = headers
+        
+        return self.session.request(method, f"{BASE_URL}{endpoint}", **kwargs)
+    
+    def test_voc_dashboard_kpis(self):
+        """Test GET /api/voc/dashboard/kpis"""
+        print("\n📊 Testing VoC Dashboard KPIs...")
+        
         try:
-            response = self.session.get(f"{API_BASE}/health")
+            response = self.make_authenticated_request('GET', '/voc/dashboard/kpis')
             
-            if response.status_code == 200:
-                data = response.json()
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard KPIs", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            # Check required fields
+            required_fields = [
+                'nps_score', 'csat_score', 'ces_score', 'response_rate',
+                'promoter_pct', 'passive_pct', 'detractor_pct', 
+                'total_responses', 'active_accounts'
+            ]
+            
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                self.log_test("VoC Dashboard KPIs", False, f"Missing fields: {missing_fields}")
+                return
+            
+            # Check data expectations
+            total_responses = data.get('total_responses', 0)
+            active_accounts = data.get('active_accounts', 0)
+            
+            details = f"Total responses: {total_responses}, Active accounts: {active_accounts}"
+            
+            # Verify expected data ranges
+            if total_responses < 140 or total_responses > 150:
+                self.log_test("VoC Dashboard KPIs", False, f"Expected ~142 responses, got {total_responses}")
+                return
                 
-                # Check overall status
-                status = data.get("status")
-                status_check = status == "healthy"
-                
-                # Check checks object
-                checks = data.get("checks", {})
-                
-                # Check database status
-                db_status = checks.get("database", {}).get("status")
-                db_check = db_status == "ok"
-                
-                # Check for scheduler
-                scheduler_exists = "scheduler" in checks
-                
-                # Check for sentry
-                sentry_exists = "sentry" in checks
-                
-                overall_success = status_check and db_check and scheduler_exists and sentry_exists
-                details = f"status={status}; database.status={db_status}; scheduler_present={scheduler_exists}; sentry_present={sentry_exists}"
-                
-                self.log_result("GET /api/health - Health endpoint", overall_success, details, data)
-            else:
-                self.log_result("GET /api/health - Health endpoint", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
+            if active_accounts != 6:
+                self.log_test("VoC Dashboard KPIs", False, f"Expected 6 active accounts, got {active_accounts}")
+                return
+            
+            self.log_test("VoC Dashboard KPIs", True, details)
+            
         except Exception as e:
-            self.log_result("GET /api/health - Health endpoint", False, f"Exception: {str(e)}")
-
-    def test_request_id_header(self):
-        """Test 3: Check X-Request-ID header presence"""
+            self.log_test("VoC Dashboard KPIs", False, f"Exception: {str(e)}")
+    
+    def test_voc_dashboard_trend(self):
+        """Test GET /api/voc/dashboard/trend"""
+        print("\n📈 Testing VoC Dashboard Trend...")
+        
         try:
-            response = self.session.head(f"{API_BASE}/")
+            response = self.make_authenticated_request('GET', '/voc/dashboard/trend')
             
-            request_id = response.headers.get("X-Request-ID")
-            if request_id:
-                self.log_result("X-Request-ID header presence", True, 
-                              f"X-Request-ID header present: {request_id}")
-            else:
-                self.log_result("X-Request-ID header presence", False, 
-                              "X-Request-ID header missing", dict(response.headers))
-                
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard Trend", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log_test("VoC Dashboard Trend", False, "Expected array response")
+                return
+            
+            if len(data) != 12:
+                self.log_test("VoC Dashboard Trend", False, f"Expected 12 months, got {len(data)}")
+                return
+            
+            # Check structure of first item
+            if data:
+                item = data[0]
+                required_fields = ['month', 'nps', 'csat']
+                missing_fields = [field for field in required_fields if field not in item]
+                if missing_fields:
+                    self.log_test("VoC Dashboard Trend", False, f"Missing fields in trend data: {missing_fields}")
+                    return
+            
+            # Count non-null values
+            non_null_nps = sum(1 for item in data if item.get('nps') is not None)
+            non_null_csat = sum(1 for item in data if item.get('csat') is not None)
+            
+            details = f"12 months data, {non_null_nps} NPS values, {non_null_csat} CSAT values"
+            self.log_test("VoC Dashboard Trend", True, details)
+            
         except Exception as e:
-            self.log_result("X-Request-ID header presence", False, f"Exception: {str(e)}")
-
-    def authenticate(self):
-        """Authenticate and get OTP from logs"""
+            self.log_test("VoC Dashboard Trend", False, f"Exception: {str(e)}")
+    
+    def test_voc_dashboard_verbatims(self):
+        """Test GET /api/voc/dashboard/verbatims?limit=6"""
+        print("\n💬 Testing VoC Dashboard Verbatims...")
+        
         try:
-            # Step 1: Login
-            login_data = {
-                "email": ADMIN_EMAIL,
-                "password": ADMIN_PASSWORD
-            }
+            response = self.make_authenticated_request('GET', '/voc/dashboard/verbatims?limit=6')
             
-            response = self.session.post(f"{API_BASE}/auth/login", json=login_data)
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard Verbatims", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
             
-            if response.status_code == 200:
-                print("✅ Login successful, checking for OTP in backend logs...")
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log_test("VoC Dashboard Verbatims", False, "Expected array response")
+                return
+            
+            if len(data) > 6:
+                self.log_test("VoC Dashboard Verbatims", False, f"Expected max 6 verbatims, got {len(data)}")
+                return
+            
+            # Check structure if we have data
+            if data:
+                item = data[0]
+                required_fields = ['id', 'type', 'score', 'text', 'account_name', 'color']
+                missing_fields = [field for field in required_fields if field not in item]
+                if missing_fields:
+                    self.log_test("VoC Dashboard Verbatims", False, f"Missing fields: {missing_fields}")
+                    return
                 
-                # Step 2: Get OTP from backend logs
-                import subprocess
-                try:
-                    # Check backend logs for OTP
-                    log_result = subprocess.run(
-                        ["tail", "-n", "100", "/var/log/supervisor/backend.err.log"],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    
-                    log_content = log_result.stdout
-                    
-                    # Look for OTP patterns
-                    otp_patterns = [
-                        r'OTP.*?(\d{6})',
-                        r'otp.*?(\d{6})',
-                        r'(\d{6})',  # Any 6-digit number
-                    ]
-                    
-                    otp_code = None
-                    for pattern in otp_patterns:
-                        matches = re.findall(pattern, log_content, re.IGNORECASE)
-                        if matches:
-                            # Get the last match (most recent)
-                            otp_code = matches[-1]
-                            break
-                    
-                    if otp_code:
-                        print(f"✅ Found OTP in logs: {otp_code}")
-                        
-                        # Step 3: Verify OTP
-                        otp_data = {
-                            "email": ADMIN_EMAIL,
-                            "code": otp_code,
-                            "purpose": "login"
-                        }
-                        otp_response = self.session.post(f"{API_BASE}/auth/verify-otp", json=otp_data)
-                        
-                        if otp_response.status_code == 200:
-                            otp_result = otp_response.json()
-                            self.auth_token = otp_result.get("access_token")
-                            if self.auth_token:
-                                self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
-                                self.log_result("Authentication flow", True, 
-                                              f"Successfully authenticated with OTP: {otp_code}")
-                                return True
-                            else:
-                                self.log_result("Authentication flow", False, 
-                                              "No access_token in OTP response", otp_result)
-                        else:
-                            self.log_result("Authentication flow", False, 
-                                          f"OTP verification failed: HTTP {otp_response.status_code}", 
-                                          otp_response.text)
-                    else:
-                        self.log_result("Authentication flow", False, 
-                                      "No OTP found in backend logs", log_content[-500:])
-                        
-                except subprocess.TimeoutExpired:
-                    self.log_result("Authentication flow", False, "Timeout reading backend logs")
-                except Exception as log_e:
-                    self.log_result("Authentication flow", False, f"Error reading logs: {str(log_e)}")
-                    
-            else:
-                self.log_result("Authentication flow", False, 
-                              f"Login failed: HTTP {response.status_code}", response.text)
-                
+                # Check type values
+                valid_types = ['PROMOTER', 'PASSIVE', 'DETRACTOR']
+                if item.get('type') not in valid_types:
+                    self.log_test("VoC Dashboard Verbatims", False, f"Invalid type: {item.get('type')}")
+                    return
+            
+            details = f"Returned {len(data)} verbatims"
+            self.log_test("VoC Dashboard Verbatims", True, details)
+            
         except Exception as e:
-            self.log_result("Authentication flow", False, f"Exception: {str(e)}")
+            self.log_test("VoC Dashboard Verbatims", False, f"Exception: {str(e)}")
+    
+    def test_voc_dashboard_pain_points(self):
+        """Test GET /api/voc/dashboard/pain-points"""
+        print("\n🔍 Testing VoC Dashboard Pain Points...")
+        
+        try:
+            response = self.make_authenticated_request('GET', '/voc/dashboard/pain-points')
             
-        return False
-
-    def test_profile_update(self):
-        """Test 4: PATCH /api/users/me - profile self-update"""
-        if not self.auth_token:
-            self.log_result("PATCH /api/users/me - Profile update", False, "Not authenticated")
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard Pain Points", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log_test("VoC Dashboard Pain Points", False, "Expected array response")
+                return
+            
+            expected_pain_points = [
+                'Communication Gaps', 'Documentation', 'Reporting Clarity', 
+                'Response Time', 'Escalation Process'
+            ]
+            
+            if data:
+                item = data[0]
+                required_fields = ['label', 'count', 'sub', 'pct', 'color']
+                missing_fields = [field for field in required_fields if field not in item]
+                if missing_fields:
+                    self.log_test("VoC Dashboard Pain Points", False, f"Missing fields: {missing_fields}")
+                    return
+            
+            details = f"Returned {len(data)} pain points"
+            if len(data) == 5:
+                details += " (expected 5)"
+            
+            self.log_test("VoC Dashboard Pain Points", True, details)
+            
+        except Exception as e:
+            self.log_test("VoC Dashboard Pain Points", False, f"Exception: {str(e)}")
+    
+    def test_voc_dashboard_csat_distribution(self):
+        """Test GET /api/voc/dashboard/csat-distribution"""
+        print("\n⭐ Testing VoC Dashboard CSAT Distribution...")
+        
+        try:
+            response = self.make_authenticated_request('GET', '/voc/dashboard/csat-distribution')
+            
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard CSAT Distribution", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log_test("VoC Dashboard CSAT Distribution", False, "Expected array response")
+                return
+            
+            if len(data) != 5:
+                self.log_test("VoC Dashboard CSAT Distribution", False, f"Expected 5 ratings, got {len(data)}")
+                return
+            
+            # Check structure
+            expected_ratings = ['5★', '4★', '3★', '2★', '1★']
+            actual_ratings = [item.get('rating') for item in data]
+            
+            if actual_ratings != expected_ratings:
+                self.log_test("VoC Dashboard CSAT Distribution", False, f"Expected ratings {expected_ratings}, got {actual_ratings}")
+                return
+            
+            # Check required fields
+            if data:
+                item = data[0]
+                required_fields = ['rating', 'count', 'pct']
+                missing_fields = [field for field in required_fields if field not in item]
+                if missing_fields:
+                    self.log_test("VoC Dashboard CSAT Distribution", False, f"Missing fields: {missing_fields}")
+                    return
+            
+            self.log_test("VoC Dashboard CSAT Distribution", True, "5 star ratings with counts and percentages")
+            
+        except Exception as e:
+            self.log_test("VoC Dashboard CSAT Distribution", False, f"Exception: {str(e)}")
+    
+    def test_voc_dashboard_strengths(self):
+        """Test GET /api/voc/dashboard/strengths?limit=4"""
+        print("\n💪 Testing VoC Dashboard Strengths...")
+        
+        try:
+            response = self.make_authenticated_request('GET', '/voc/dashboard/strengths?limit=4')
+            
+            if response.status_code != 200:
+                self.log_test("VoC Dashboard Strengths", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log_test("VoC Dashboard Strengths", False, "Expected array response")
+                return
+            
+            if len(data) > 4:
+                self.log_test("VoC Dashboard Strengths", False, f"Expected max 4 strengths, got {len(data)}")
+                return
+            
+            # Check structure if we have data
+            if data:
+                item = data[0]
+                required_fields = ['count', 'badge', 'quote', 'tag']
+                missing_fields = [field for field in required_fields if field not in item]
+                if missing_fields:
+                    self.log_test("VoC Dashboard Strengths", False, f"Missing fields: {missing_fields}")
+                    return
+            
+            details = f"Returned {len(data)} strength items"
+            self.log_test("VoC Dashboard Strengths", True, details)
+            
+        except Exception as e:
+            self.log_test("VoC Dashboard Strengths", False, f"Exception: {str(e)}")
+    
+    def test_voc_accounts_list(self):
+        """Test GET /api/voc/accounts"""
+        print("\n🏢 Testing VoC Accounts List...")
+        
+        try:
+            response = self.make_authenticated_request('GET', '/voc/accounts')
+            
+            if response.status_code != 200:
+                self.log_test("VoC Accounts List", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
+            
+            data = response.json()
+            
+            if not isinstance(data, dict) or 'accounts' not in data or 'total' not in data:
+                self.log_test("VoC Accounts List", False, "Expected object with 'accounts' and 'total' fields")
+                return
+            
+            accounts = data['accounts']
+            total = data['total']
+            
+            if not isinstance(accounts, list):
+                self.log_test("VoC Accounts List", False, "Expected 'accounts' to be an array")
+                return
+            
+            if total != 6:
+                self.log_test("VoC Accounts List", False, f"Expected total=6, got {total}")
+                return
+            
+            # Check account structure
+            if accounts:
+                account = accounts[0]
+                required_fields = [
+                    'id', 'company_name', 'industry', 'practice', 
+                    'latest_nps', 'latest_csat', 'rag_status', 
+                    'total_responses', 'initials'
+                ]
+                missing_fields = [field for field in required_fields if field not in account]
+                if missing_fields:
+                    self.log_test("VoC Accounts List", False, f"Missing fields: {missing_fields}")
+                    return
+                
+                # Check for expected companies
+                company_names = [acc.get('company_name', '') for acc in accounts]
+                expected_companies = ['Reliance Petro', 'Axis Bank', 'L&T Constructs', 'HCL Unistore', 'Tata Motors', 'SBI Life']
+                
+                # Store first account ID for detail test
+                self.first_account_id = account.get('id')
+            
+            details = f"6 accounts returned with proper structure"
+            self.log_test("VoC Accounts List", True, details)
+            
+        except Exception as e:
+            self.log_test("VoC Accounts List", False, f"Exception: {str(e)}")
+    
+    def test_voc_account_detail(self):
+        """Test GET /api/voc/accounts/{id}"""
+        print("\n🔍 Testing VoC Account Detail...")
+        
+        if not hasattr(self, 'first_account_id') or not self.first_account_id:
+            self.log_test("VoC Account Detail", False, "No account ID available from accounts list test")
             return
-            
+        
         try:
-            # Test profile update
-            update_data = {
-                "name": "Admin Test",
-                "department": "IT"
-            }
+            response = self.make_authenticated_request('GET', f'/voc/accounts/{self.first_account_id}')
             
-            response = self.session.patch(f"{API_BASE}/users/me", json=update_data)
+            if response.status_code != 200:
+                self.log_test("VoC Account Detail", False, f"Status: {response.status_code}, Response: {response.text}")
+                return
             
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check if update was successful
-                name_updated = data.get("name") == "Admin Test"
-                dept_updated = data.get("department") == "IT"
-                
-                success = name_updated and dept_updated
-                details = f"name_updated={name_updated}, department_updated={dept_updated}"
-                
-                self.log_result("PATCH /api/users/me - Profile update", success, details, data)
-            else:
-                self.log_result("PATCH /api/users/me - Profile update", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
+            data = response.json()
+            
+            required_fields = [
+                'id', 'company_name', 'industry', 'practice',
+                'latest_nps', 'latest_csat', 'rag_status',
+                'total_responses', 'recent_responses'
+            ]
+            
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                self.log_test("VoC Account Detail", False, f"Missing fields: {missing_fields}")
+                return
+            
+            recent_responses = data.get('recent_responses', [])
+            if not isinstance(recent_responses, list):
+                self.log_test("VoC Account Detail", False, "Expected 'recent_responses' to be an array")
+                return
+            
+            details = f"Account detail with {len(recent_responses)} recent responses"
+            self.log_test("VoC Account Detail", True, details)
+            
         except Exception as e:
-            self.log_result("PATCH /api/users/me - Profile update", False, f"Exception: {str(e)}")
-
-    def test_auth_me(self):
-        """Test 5: GET /api/auth/me - verify last_login_at and profile updates"""
-        if not self.auth_token:
-            self.log_result("GET /api/auth/me - User profile", False, "Not authenticated")
-            return
-            
-        try:
-            response = self.session.get(f"{API_BASE}/auth/me")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check last_login_at
-                last_login = data.get("last_login_at")
-                last_login_check = last_login is not None
-                
-                # Check profile updates
-                name = data.get("name")
-                department = data.get("department")
-                name_check = name == "Admin Test"
-                dept_check = department == "IT"
-                
-                success = last_login_check and name_check and dept_check
-                details = f"last_login_at_present={last_login_check}, name='{name}', department='{department}'"
-                
-                self.log_result("GET /api/auth/me - User profile", success, details, data)
-            else:
-                self.log_result("GET /api/auth/me - User profile", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("GET /api/auth/me - User profile", False, f"Exception: {str(e)}")
-
-    def test_xp_summary(self):
-        """Test 6: GET /api/xp/summary - verify XP summary response"""
-        if not self.auth_token:
-            self.log_result("GET /api/xp/summary - XP summary", False, "Not authenticated")
-            return
-            
-        try:
-            response = self.session.get(f"{API_BASE}/xp/summary")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check for actual fields returned by the API
-                expected_fields = ["total_xp", "quarter", "quarter_xp", "rank", "total_users", "breakdown", "level"]
-                fields_present = all(field in data for field in expected_fields)
-                
-                details = f"Expected fields present: {fields_present}, Fields: {list(data.keys())}"
-                
-                self.log_result("GET /api/xp/summary - XP summary", fields_present, details, data)
-            else:
-                self.log_result("GET /api/xp/summary - XP summary", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("GET /api/xp/summary - XP summary", False, f"Exception: {str(e)}")
-
-    def test_incentive_statement(self):
-        """Test 7: GET /api/incentive/statement - verify quarter format"""
-        if not self.auth_token:
-            self.log_result("GET /api/incentive/statement - Incentive statement", False, "Not authenticated")
-            return
-            
-        try:
-            response = self.session.get(f"{API_BASE}/incentive/statement")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check quarter format
-                quarter = data.get("quarter")
-                quarter_pattern = r"(2025|2026)-Q[1-4]"
-                quarter_valid = quarter and re.match(quarter_pattern, quarter)
-                
-                details = f"Quarter format valid: {quarter_valid}, Quarter: '{quarter}'"
-                
-                self.log_result("GET /api/incentive/statement - Incentive statement", 
-                              quarter_valid, details, data)
-            else:
-                self.log_result("GET /api/incentive/statement - Incentive statement", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("GET /api/incentive/statement - Incentive statement", False, f"Exception: {str(e)}")
-
-    def test_admin_notification_send(self):
-        """Test 8: POST /api/admin/notifications/send - send test notification"""
-        if not self.auth_token:
-            self.log_result("POST /api/admin/notifications/send - Send notification", False, "Not authenticated")
-            return
-            
-        try:
-            notification_data = {
-                "title": "Sprint F Test",
-                "body": "Security hardening complete",
-                "category": "announcement",
-                "target_type": "all"
-            }
-            
-            response = self.session.post(f"{API_BASE}/admin/notifications/send", json=notification_data)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check response - API returns 'sent' field, not 'success'
-                success = data.get("sent", False)
-                details = f"Notification sent successfully: {success}"
-                
-                self.log_result("POST /api/admin/notifications/send - Send notification", 
-                              success, details, data)
-            else:
-                self.log_result("POST /api/admin/notifications/send - Send notification", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("POST /api/admin/notifications/send - Send notification", False, f"Exception: {str(e)}")
-
-    def test_notifications_list(self):
-        """Test 9: GET /api/notifications - verify user can see notifications"""
-        if not self.auth_token:
-            self.log_result("GET /api/notifications - List notifications", False, "Not authenticated")
-            return
-            
-        try:
-            response = self.session.get(f"{API_BASE}/notifications")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check if it's a paginated response with 'items' array
-                has_items = "items" in data and isinstance(data["items"], list)
-                has_total = "total" in data
-                items = data.get("items", []) if has_items else []
-                
-                # Look for our test notification
-                test_notification_found = False
-                if has_items:
-                    for notification in items:
-                        if (notification.get("title") == "Sprint F Test" and 
-                            notification.get("body") == "Security hardening complete"):
-                            test_notification_found = True
-                            break
-                
-                success = has_items and has_total and test_notification_found
-                details = f"Has items: {has_items}, Has total: {has_total}, Test notification found: {test_notification_found}"
-                
-                self.log_result("GET /api/notifications - List notifications", success, details, 
-                              {"total": data.get("total", 0), "items_count": len(items), "sample": items[:2] if items else []})
-            else:
-                self.log_result("GET /api/notifications - List notifications", False, 
-                              f"HTTP {response.status_code}", response.text)
-                
-        except Exception as e:
-            self.log_result("GET /api/notifications - List notifications", False, f"Exception: {str(e)}")
-
+            self.log_test("VoC Account Detail", False, f"Exception: {str(e)}")
+    
     def run_all_tests(self):
-        """Run all Sprint F tests"""
-        print("=" * 80)
-        print("HSI Employee Engagement Platform - Sprint F Backend API Testing")
-        print("=" * 80)
-        print(f"Backend URL: {API_BASE}")
-        print(f"Test Credentials: {ADMIN_EMAIL}")
-        print("=" * 80)
-        print()
+        """Run all VoC backend tests"""
+        print("🚀 Starting VoC Intelligence Platform Phase 1 Backend Testing")
+        print("=" * 60)
         
-        # Test 1-3: No auth required
-        self.test_root_endpoint()
-        self.test_health_endpoint()
-        self.test_request_id_header()
+        # Authentication
+        if not self.authenticate():
+            print("\n❌ Authentication failed. Cannot proceed with API tests.")
+            return False
         
-        # Authenticate
-        if self.authenticate():
-            # Test 4-9: Auth required
-            self.test_profile_update()
-            self.test_auth_me()
-            self.test_xp_summary()
-            self.test_incentive_statement()
-            self.test_admin_notification_send()
-            self.test_notifications_list()
-        else:
-            print("❌ Authentication failed - skipping authenticated tests")
+        # Test unauthorized access
+        self.test_unauthorized_access()
+        
+        # Test all VoC endpoints
+        self.test_voc_dashboard_kpis()
+        self.test_voc_dashboard_trend()
+        self.test_voc_dashboard_verbatims()
+        self.test_voc_dashboard_pain_points()
+        self.test_voc_dashboard_csat_distribution()
+        self.test_voc_dashboard_strengths()
+        self.test_voc_accounts_list()
+        self.test_voc_account_detail()
         
         # Summary
-        print("=" * 80)
-        print("TEST SUMMARY")
-        print("=" * 80)
+        self.print_summary()
         
-        passed = sum(1 for result in self.test_results if "✅ PASS" in result["status"])
-        failed = sum(1 for result in self.test_results if "❌ FAIL" in result["status"])
+        return all(result['success'] for result in self.test_results)
+    
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "=" * 60)
+        print("📋 TEST SUMMARY")
+        print("=" * 60)
+        
+        passed = sum(1 for result in self.test_results if result['success'])
         total = len(self.test_results)
         
         print(f"Total Tests: {total}")
         print(f"Passed: {passed}")
-        print(f"Failed: {failed}")
-        print(f"Success Rate: {(passed/total*100):.1f}%" if total > 0 else "0%")
-        print()
+        print(f"Failed: {total - passed}")
+        print(f"Success Rate: {passed/total*100:.1f}%")
         
-        if failed > 0:
-            print("FAILED TESTS:")
+        if total - passed > 0:
+            print("\n❌ FAILED TESTS:")
             for result in self.test_results:
-                if "❌ FAIL" in result["status"]:
+                if not result['success']:
                     print(f"  - {result['test']}: {result['details']}")
         
-        return passed, failed, total
+        print("\n✅ PASSED TESTS:")
+        for result in self.test_results:
+            if result['success']:
+                print(f"  - {result['test']}")
 
 if __name__ == "__main__":
-    tester = SprintFTester()
-    passed, failed, total = tester.run_all_tests()
-    
-    # Exit with appropriate code
-    exit(0 if failed == 0 else 1)
+    tester = VoCTester()
+    success = tester.run_all_tests()
+    sys.exit(0 if success else 1)

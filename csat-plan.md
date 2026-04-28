@@ -1,6 +1,6 @@
 # HSI VoC Intelligence Platform — Implementation Plan
 > **PRD Version:** v1.0 — April 2026  
-> **Target App:** https://init-demo-2.preview.emergentagent.com/apps/nps-csat  
+> **Target App:** https://optimistic-chaplygin-3.preview.emergentagent.com/apps/nps-csat  
 > **Stack:** React 18 · FastAPI (Python) · PostgreSQL 16 · Redis  
 > **Classification:** Internal — Project VOICE  
 

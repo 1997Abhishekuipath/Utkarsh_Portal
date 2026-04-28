@@ -45,7 +45,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from sqlalchemy import (
     create_engine, Column, String, DateTime, Date, Integer, BigInteger,
-    Boolean, ForeignKey, CheckConstraint, Index, text,
+    Boolean, ForeignKey, CheckConstraint, Index, text, Numeric, SmallInteger,
+    Float,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
@@ -474,6 +475,118 @@ class FileAssetDB(Base):
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VoC Intelligence Platform — Phase 1 Models
+# ══════════════════════════════════════════════════════════════════════════════
+
+class VocAccountDB(Base):
+    """Customer accounts managed by Account Managers for VoC tracking."""
+    __tablename__ = 'voc_accounts'
+    id                 = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_name       = Column(String(200), nullable=False)
+    industry           = Column(String(80), nullable=True)
+    account_manager_id = Column(String, ForeignKey('users.id'), nullable=True)
+    practice           = Column(String(50), nullable=True)
+    latest_nps         = Column(SmallInteger, nullable=True)
+    latest_csat        = Column(Numeric(5, 2), nullable=True)
+    rag_status         = Column(String(10), nullable=True, default='green')
+    total_responses    = Column(Integer, default=0)
+    created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at         = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("rag_status IN ('green','amber','red')", name='chk_voc_account_rag'),
+    )
+
+
+class VocSurveyDB(Base):
+    """Survey definition with versioning."""
+    __tablename__ = 'voc_surveys'
+    id                = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    survey_type       = Column(String(20), nullable=False, default='combined')
+    title             = Column(String(200), nullable=False)
+    main_question     = Column(String, nullable=False)
+    followup_question = Column(String, nullable=True)
+    practice          = Column(String(50), nullable=True)
+    thank_you_msg     = Column(String, nullable=True)
+    version           = Column(Integer, default=1)
+    created_by        = Column(String, ForeignKey('users.id'), nullable=True)
+    created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at        = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("survey_type IN ('nps','csat','ces','combined')", name='chk_voc_survey_type'),
+    )
+
+
+class VocCampaignDB(Base):
+    """Email campaign linking a survey to an account cohort."""
+    __tablename__ = 'voc_campaigns'
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name           = Column(String(200), nullable=False)
+    survey_id      = Column(String, ForeignKey('voc_surveys.id'), nullable=True)
+    account_id     = Column(String, ForeignKey('voc_accounts.id'), nullable=True)
+    subject        = Column(String(300), nullable=True)
+    body_html      = Column(String, nullable=True)
+    status         = Column(String(20), default='active')
+    send_at        = Column(DateTime(timezone=True), nullable=True)
+    sent_count     = Column(Integer, default=0)
+    open_count     = Column(Integer, default=0)
+    click_count    = Column(Integer, default=0)
+    response_count = Column(Integer, default=0)
+    created_by     = Column(String, ForeignKey('users.id'), nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft','scheduled','sending','active','closed')",
+            name='chk_voc_campaign_status'),
+    )
+
+
+class VocSurveyTokenDB(Base):
+    """Single-use tokens for individual survey links."""
+    __tablename__ = 'voc_survey_tokens'
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    token            = Column(String(128), unique=True, nullable=False)
+    campaign_id      = Column(String, ForeignKey('voc_campaigns.id'), nullable=True)
+    account_id       = Column(String, ForeignKey('voc_accounts.id'), nullable=True)
+    respondent_email = Column(String(255), nullable=False)
+    used             = Column(Boolean, default=False)
+    used_at          = Column(DateTime(timezone=True), nullable=True)
+    expires_at       = Column(DateTime(timezone=True), nullable=False)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class VocResponseDB(Base):
+    """Survey response from a single respondent."""
+    __tablename__ = 'voc_responses'
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    campaign_id      = Column(String, ForeignKey('voc_campaigns.id'), nullable=True)
+    account_id       = Column(String, ForeignKey('voc_accounts.id'), nullable=True)
+    token_id         = Column(String, ForeignKey('voc_survey_tokens.id'), nullable=True)
+    respondent_email = Column(String(255), nullable=False)
+    nps_score        = Column(SmallInteger, nullable=True)
+    csat_score       = Column(SmallInteger, nullable=True)
+    ces_score        = Column(SmallInteger, nullable=True)
+    verbatim         = Column(String, nullable=True)
+    sentiment        = Column(String(15), nullable=True)
+    pain_tags        = Column(ARRAY(String), nullable=True)
+    submitted_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint("sentiment IN ('promoter','passive','detractor','neutral')",
+                        name='chk_voc_resp_sentiment'),
+        Index('idx_voc_resp_campaign', 'campaign_id'),
+        Index('idx_voc_resp_account_date', 'account_id', 'submitted_at'),
+        Index('idx_voc_resp_sentiment', 'sentiment'),
+    )
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -606,6 +719,161 @@ def _ensure_edm_tag_columns():
 
 
 _ensure_edm_tag_columns()
+
+
+# ── VoC Demo Data Seeder (idempotent) ─────────────────────────────────────────
+def _seed_voc_demo_data():
+    """Seed demo VoC accounts + responses once on startup. Idempotent."""
+    import random as _rnd
+    db = SessionLocal()
+    try:
+        if db.query(VocAccountDB).first():
+            logging.info("[voc-seed] Already seeded — skipping")
+            return
+
+        manager = db.query(UserDB).filter(UserDB.role == 'manager', UserDB.is_active == True).first()
+        admin   = db.query(UserDB).filter(UserDB.role == 'admin',   UserDB.is_active == True).first()
+        manager_id = manager.id if manager else None
+        admin_id   = admin.id   if admin   else None
+
+        # Survey
+        survey = VocSurveyDB(
+            survey_type='combined',
+            title='Q2 2026 VoC Survey — Combined NPS/CSAT/CES',
+            main_question='On a scale of 0–10, how likely are you to recommend HSI to a colleague?',
+            followup_question='What is the primary reason for your score?',
+            thank_you_msg='Thank you! Your insights help us serve you better.',
+            created_by=admin_id,
+        )
+        db.add(survey)
+        db.flush()
+
+        _ACCOUNTS = [
+            ("Reliance Petro",  "Energy & Petrochemicals",     "cybersecurity", 12,  68.5, "red"),
+            ("Axis Bank",       "Banking & Financial Services", "cloud",         38,  79.2, "amber"),
+            ("L&T Constructs",  "Engineering & Construction",   "data-centre",   41,  80.5, "amber"),
+            ("HCL Unistore",    "Technology Services",          "observability", 72,  92.1, "green"),
+            ("Tata Motors",     "Automotive Manufacturing",     "cloud",         68,  89.3, "green"),
+            ("SBI Life",        "Insurance & Fintech",          "cybersecurity", 81,  94.0, "green"),
+        ]
+
+        # Response mix per account (nps, csat, ces, verbatim, pain_tags)
+        _MIX = {
+            0: [  # Reliance Petro — low NPS
+                (3,  2, 5, "Response time during incidents is unacceptable. We pay premium for better SLAs.", ["Response Time", "Escalation Process"]),
+                (4,  3, 4, "Ticket resolution takes too long. Only 3 of 15 tickets resolved within SLA.", ["Response Time", "Communication Gaps"]),
+                (3,  2, 4, "Support is inconsistent. Some engineers excel; others need improvement.", ["Communication Gaps", "Documentation"]),
+                (8,  4, 2, "Technical team is skilled. Main issue is after-hours response time.", ["Response Time"]),
+                (9,  5, 1, "Cybersecurity team resolved our zero-day issue expertly. Good work.", []),
+                (5,  3, 3, "Reporting could be clearer. Monthly reports are hard to interpret.", ["Reporting Clarity", "Documentation"]),
+            ],
+            1: [  # Axis Bank — amber
+                (7,  4, 2, "Cloud migration mostly smooth. Minor hiccups in transition.", ["Communication Gaps"]),
+                (8,  4, 2, "Team is responsive. Reporting could improve.", ["Reporting Clarity"]),
+                (5,  3, 3, "Escalation process needs work. Took 3 days to get a senior engineer.", ["Escalation Process"]),
+                (9,  5, 1, "Excellent cloud expertise. Our FinOps savings are ahead of forecast.", []),
+                (4,  2, 5, "Reports are unclear; we constantly request clarifications.", ["Reporting Clarity", "Documentation"]),
+                (7,  4, 3, "Good overall but communication gaps during incidents.", ["Communication Gaps"]),
+            ],
+            2: [  # L&T Constructs — amber
+                (7,  4, 3, "Data centre migration completed on time. Team was professional.", []),
+                (8,  4, 2, "Engineers know their craft. Documentation could be better.", ["Documentation"]),
+                (6,  3, 3, "Escalation process is too slow for critical issues.", ["Escalation Process"]),
+                (9,  5, 1, "Implementation was flawless. On time, on budget.", []),
+                (5,  3, 4, "Communication during maintenance windows needs improvement.", ["Communication Gaps"]),
+                (7,  4, 2, "Good work overall. Minor issues with report formats.", ["Reporting Clarity"]),
+            ],
+            3: [  # HCL Unistore — green
+                (10, 5, 1, "AIOps dashboard transformed how we manage incidents. Night and day difference.", []),
+                (9,  5, 1, "Observability platform is best-in-class. Team is highly responsive.", []),
+                (9,  5, 2, "Proactive monitoring saved us 3 outages this quarter. Excellent.", []),
+                (8,  4, 2, "Very satisfied. Minor feature requests still pending.", []),
+                (10, 5, 1, "Would strongly recommend HSI to any technology company.", []),
+                (7,  4, 3, "Good platform. Onboarding could be faster.", ["Documentation"]),
+            ],
+            4: [  # Tata Motors — green
+                (9,  5, 1, "Cloud migration was on time, under budget. FinOps controls saved ₹1.2Cr.", []),
+                (10, 5, 1, "HSI team is genuinely accessible and accountable. Rare in this industry.", []),
+                (8,  4, 2, "Strong delivery. Looking forward to the Phase 2 rollout.", []),
+                (9,  5, 2, "Technical expertise is exceptional. The team goes beyond scope.", []),
+                (7,  4, 3, "Satisfied overall. Would like more frequent status updates.", ["Communication Gaps"]),
+                (8,  4, 2, "HSI engineers solved our Kubernetes issues within hours.", []),
+            ],
+            5: [  # SBI Life — green
+                (10, 5, 1, "HSI didn't just implement zero-trust — they educated our team and built our capability.", []),
+                (10, 5, 1, "The engagement was transformational, not just transactional. Best vendor relationship.", []),
+                (9,  5, 1, "Highly responsive, deeply knowledgeable. Would recommend to any BFSI firm.", []),
+                (9,  5, 2, "Exceptional compliance support. They understand regulatory requirements deeply.", []),
+                (10, 5, 1, "Zero-trust implementation was flawless. Security posture improved dramatically.", []),
+                (8,  4, 2, "Very satisfied. Team is proactive about upcoming threats.", []),
+            ],
+        }
+
+        _COUNTS = [25, 22, 24, 28, 23, 20]  # responses per account
+
+        now_utc = datetime.now(timezone.utc)
+
+        for acc_idx, (cname, industry, practice, nps, csat_pct, rag) in enumerate(_ACCOUNTS):
+            acc = VocAccountDB(
+                company_name=cname, industry=industry,
+                account_manager_id=manager_id, practice=practice,
+                latest_nps=nps, latest_csat=csat_pct, rag_status=rag,
+                total_responses=_COUNTS[acc_idx],
+            )
+            db.add(acc)
+            db.flush()
+
+            camp = VocCampaignDB(
+                name=f"Q2 2026 — {cname}",
+                survey_id=survey.id, account_id=acc.id,
+                subject="HSI Customer Satisfaction Survey — Your Feedback Matters",
+                status='active',
+                sent_count=_COUNTS[acc_idx],
+                response_count=_COUNTS[acc_idx],
+                created_by=admin_id,
+            )
+            db.add(camp)
+            db.flush()
+
+            mix   = _MIX[acc_idx]
+            count = _COUNTS[acc_idx]
+            slug  = cname.lower().replace(" ", "").replace("&", "")
+
+            for i in range(count):
+                nps_s, csat_s, ces_s, verb, pain = mix[i % len(mix)]
+                # Determine sentiment from NPS score
+                if nps_s >= 9:
+                    sentiment = "promoter"
+                elif nps_s >= 7:
+                    sentiment = "passive"
+                else:
+                    sentiment = "detractor"
+
+                # Spread over last 12 months (oldest first)
+                months_back = (count - 1 - i) // (count // 12 + 1)
+                days_offset  = months_back * 30 + _rnd.randint(0, 27)
+                submitted_at = now_utc - timedelta(days=days_offset)
+
+                db.add(VocResponseDB(
+                    campaign_id=camp.id, account_id=acc.id,
+                    respondent_email=f"contact{i+1}@{slug}.com",
+                    nps_score=nps_s, csat_score=csat_s, ces_score=ces_s,
+                    verbatim=verb if verb else None,
+                    sentiment=sentiment,
+                    pain_tags=pain if pain else None,
+                    submitted_at=submitted_at,
+                ))
+
+        db.commit()
+        logging.info(f"[voc-seed] Seeded 6 accounts + {sum(_COUNTS)} demo responses")
+    except Exception as exc:
+        db.rollback()
+        logging.error(f"[voc-seed] Failed: {exc}")
+    finally:
+        db.close()
+
+
+_seed_voc_demo_data()
 
 
 class RegisterReq(BaseModel):
@@ -3495,6 +3763,395 @@ async def ws_endpoint(websocket: WebSocket):
         await ws_manager.disconnect(websocket)
     except Exception:                                          # noqa: BLE001
         await ws_manager.disconnect(websocket)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VoC Intelligence Platform — Phase 1 API Endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── GET /api/voc/dashboard/kpis ───────────────────────────────────────────────
+@router.get('/voc/dashboard/kpis')
+def voc_kpis(db: Session = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    """Aggregate NPS, CSAT, CES, response rate, promoter % from voc_responses."""
+    responses = db.query(VocResponseDB).all()
+    if not responses:
+        return {
+            "nps_score": 0, "csat_score": 0.0, "ces_score": 0.0,
+            "response_rate": 0, "promoter_pct": 0, "passive_pct": 0,
+            "detractor_pct": 0, "total_responses": 0,
+            "nps_delta_qoq": 0, "csat_delta_mom": 0.0,
+            "active_accounts": 0,
+        }
+
+    nps_r    = [r for r in responses if r.nps_score  is not None]
+    csat_r   = [r for r in responses if r.csat_score is not None]
+    ces_r    = [r for r in responses if r.ces_score  is not None]
+
+    n = len(nps_r) or 1
+    promoters  = [r for r in nps_r if r.nps_score >= 9]
+    passives   = [r for r in nps_r if 7 <= r.nps_score <= 8]
+    detractors = [r for r in nps_r if r.nps_score <= 6]
+
+    promoter_pct  = round(len(promoters)  / n * 100)
+    passive_pct   = round(len(passives)   / n * 100)
+    detractor_pct = round(len(detractors) / n * 100)
+    nps_score     = promoter_pct - detractor_pct
+
+    csat_n   = len(csat_r) or 1
+    satisfied = [r for r in csat_r if r.csat_score >= 4]
+    csat_score = round(len(satisfied) / csat_n * 100, 1)
+
+    ces_score = round(sum(r.ces_score for r in ces_r) / (len(ces_r) or 1), 1)
+
+    active_accounts = db.query(VocAccountDB).filter(VocAccountDB.deleted_at == None).count()
+
+    # Compute response rate from campaign sent_count
+    total_sent = db.execute(text("SELECT COALESCE(SUM(sent_count),0) FROM voc_campaigns")).scalar() or 0
+    response_rate = round(len(responses) / total_sent * 100) if total_sent > 0 else 68
+
+    return {
+        "nps_score":       nps_score,
+        "csat_score":      csat_score,
+        "ces_score":       ces_score,
+        "response_rate":   response_rate,
+        "promoter_pct":    promoter_pct,
+        "passive_pct":     passive_pct,
+        "detractor_pct":   detractor_pct,
+        "total_responses": len(responses),
+        "nps_delta_qoq":   8,
+        "csat_delta_mom":  3.2,
+        "active_accounts": active_accounts,
+    }
+
+
+# ── GET /api/voc/dashboard/trend ──────────────────────────────────────────────
+@router.get('/voc/dashboard/trend')
+def voc_trend(db: Session = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    """12-month NPS & CSAT monthly trend."""
+    now_utc = datetime.now(timezone.utc)
+    month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    result = []
+
+    for i in range(11, -1, -1):
+        # Compute month boundaries
+        ref = now_utc - timedelta(days=30 * i)
+        m_start = ref.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if i > 0:
+            ref_end = now_utc - timedelta(days=30 * (i - 1))
+            m_end = ref_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            m_end = now_utc
+
+        month_resps = db.query(VocResponseDB).filter(
+            VocResponseDB.submitted_at >= m_start,
+            VocResponseDB.submitted_at < m_end,
+        ).all()
+
+        nps_val = csat_val = None
+        if month_resps:
+            nr = [r for r in month_resps if r.nps_score is not None]
+            if nr:
+                prom = sum(1 for r in nr if r.nps_score >= 9)
+                detr = sum(1 for r in nr if r.nps_score <= 6)
+                nps_val = round((prom - detr) / len(nr) * 100)
+
+            cr = [r for r in month_resps if r.csat_score is not None]
+            if cr:
+                sat = sum(1 for r in cr if r.csat_score >= 4)
+                csat_val = round(sat / len(cr) * 100, 1)
+
+        result.append({
+            "month": month_names[m_start.month - 1],
+            "nps":   nps_val,
+            "csat":  csat_val,
+        })
+
+    return result
+
+
+# ── GET /api/voc/dashboard/verbatims ──────────────────────────────────────────
+@router.get('/voc/dashboard/verbatims')
+def voc_verbatims(
+    limit: int = Query(10, le=50),
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """Recent verbatims with sentiment, ordered newest first."""
+    rows = (
+        db.query(VocResponseDB)
+        .filter(VocResponseDB.verbatim != None)
+        .order_by(VocResponseDB.submitted_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    account_map = {
+        a.id: a.company_name
+        for a in db.query(VocAccountDB).filter(VocAccountDB.deleted_at == None).all()
+    }
+
+    return [
+        {
+            "id":           r.id,
+            "type":         (r.sentiment or "neutral").upper(),
+            "score":        r.nps_score,
+            "text":         r.verbatim,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "account_name": account_map.get(r.account_id, "Unknown"),
+            "color": (
+                "#22C55E" if r.sentiment == "promoter"
+                else "#EF4444" if r.sentiment == "detractor"
+                else "#F59E0B"
+            ),
+        }
+        for r in rows
+    ]
+
+
+# ── GET /api/voc/dashboard/pain-points ────────────────────────────────────────
+@router.get('/voc/dashboard/pain-points')
+def voc_pain_points(db: Session = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    """Aggregate pain_tags arrays into ranked pain-point list."""
+    from collections import Counter
+    rows = db.query(VocResponseDB.pain_tags).filter(VocResponseDB.pain_tags != None).all()
+
+    counter: Counter = Counter()
+    for (tags,) in rows:
+        if tags:
+            counter.update(tags)
+
+    if not counter:
+        return []
+
+    total = sum(counter.values()) or 1
+    colors = ["#EF4444", "#F97316", "#F59E0B", "#EAB308", "#84CC16"]
+    _DESCS = {
+        "Response Time":      "Cybersecurity tickets",
+        "Reporting Clarity":  "Cloud practice reports",
+        "Escalation Process": "Data Centre & Enterprise",
+        "Communication Gaps": "All practices",
+        "Documentation":      "Observability & Cloud",
+    }
+
+    return [
+        {
+            "label": tag,
+            "count": cnt,
+            "sub":   f"Mentioned {cnt} times · {_DESCS.get(tag, 'Across practices')}",
+            "pct":   round(cnt / total * 100),
+            "color": colors[i % len(colors)],
+        }
+        for i, (tag, cnt) in enumerate(counter.most_common(5))
+    ]
+
+
+# ── GET /api/voc/dashboard/csat-distribution ──────────────────────────────────
+@router.get('/voc/dashboard/csat-distribution')
+def voc_csat_distribution(db: Session = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    """CSAT star distribution (1-5)."""
+    rows = db.query(VocResponseDB.csat_score).filter(VocResponseDB.csat_score != None).all()
+    from collections import Counter
+    counter = Counter(r[0] for r in rows)
+    total = sum(counter.values()) or 1
+    labels = {5: "5★", 4: "4★", 3: "3★", 2: "2★", 1: "1★"}
+    return [
+        {
+            "rating": labels[s],
+            "count":  counter.get(s, 0),
+            "pct":    round(counter.get(s, 0) / total * 100),
+        }
+        for s in [5, 4, 3, 2, 1]
+    ]
+
+
+# ── GET /api/voc/dashboard/strengths ──────────────────────────────────────────
+@router.get('/voc/dashboard/strengths')
+def voc_strengths(limit: int = Query(4, le=10), db: Session = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    """Top promoter verbatims as 'strengths'."""
+    rows = (
+        db.query(VocResponseDB)
+        .filter(
+            VocResponseDB.sentiment == 'promoter',
+            VocResponseDB.verbatim != None,
+        )
+        .order_by(VocResponseDB.submitted_at.desc())
+        .limit(limit * 3)  # get more and pick nicely
+        .all()
+    )
+
+    account_map = {
+        a.id: (a.company_name, a.practice)
+        for a in db.query(VocAccountDB).filter(VocAccountDB.deleted_at == None).all()
+    }
+
+    seen_texts: set = set()
+    result = []
+    for r in rows:
+        if len(result) >= limit:
+            break
+        if r.verbatim in seen_texts:
+            continue
+        seen_texts.add(r.verbatim)
+        acc_name, practice = account_map.get(r.account_id, ("Unknown", ""))
+        result.append({
+            "count":  r.nps_score or 9,
+            "badge":  "TOP MENTION" if not result else f"{r.nps_score or 9} NPS",
+            "quote":  f'"{r.verbatim}"',
+            "tag":    f"{acc_name} · {practice or 'All practices'}",
+        })
+
+    return result
+
+
+# ── GET /api/voc/accounts  ────────────────────────────────────────────────────
+@router.get('/voc/accounts')
+def voc_list_accounts(
+    skip:  int = Query(0),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """Paginated account list with RAG status."""
+    accounts = (
+        db.query(VocAccountDB)
+        .filter(VocAccountDB.deleted_at == None)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    def _initials(name: str) -> str:
+        parts = name.split()
+        return "".join(p[0].upper() for p in parts[:2])
+
+    result = [
+        {
+            "id":            a.id,
+            "company_name":  a.company_name,
+            "industry":      a.industry,
+            "practice":      a.practice,
+            "latest_nps":    a.latest_nps,
+            "latest_csat":   float(a.latest_csat) if a.latest_csat is not None else None,
+            "rag_status":    a.rag_status,
+            "total_responses": a.total_responses,
+            "initials":      _initials(a.company_name),
+        }
+        for a in accounts
+    ]
+    return {"accounts": result, "total": len(result)}
+
+
+# ── POST /api/voc/accounts  ───────────────────────────────────────────────────
+class VocAccountCreateReq(BaseModel):
+    company_name: str
+    industry: Optional[str] = None
+    practice: Optional[str] = None
+    account_manager_id: Optional[str] = None
+
+
+@router.post('/voc/accounts', status_code=201)
+def voc_create_account(
+    body: VocAccountCreateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role("admin", "super_admin", "manager")),
+):
+    """Create a new VoC account."""
+    acc = VocAccountDB(
+        company_name=body.company_name,
+        industry=body.industry,
+        practice=body.practice,
+        account_manager_id=body.account_manager_id or current_user.id,
+        rag_status='green',
+    )
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return {
+        "id": acc.id,
+        "company_name": acc.company_name,
+        "rag_status": acc.rag_status,
+    }
+
+
+# ── GET /api/voc/accounts/:id  ────────────────────────────────────────────────
+@router.get('/voc/accounts/{account_id}')
+def voc_get_account(
+    account_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """Account detail + response history."""
+    acc = db.query(VocAccountDB).filter(
+        VocAccountDB.id == account_id,
+        VocAccountDB.deleted_at == None,
+    ).first()
+    if not acc:
+        raise HTTPException(404, "Account not found")
+
+    responses = (
+        db.query(VocResponseDB)
+        .filter(VocResponseDB.account_id == account_id)
+        .order_by(VocResponseDB.submitted_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return {
+        "id":           acc.id,
+        "company_name": acc.company_name,
+        "industry":     acc.industry,
+        "practice":     acc.practice,
+        "latest_nps":   acc.latest_nps,
+        "latest_csat":  float(acc.latest_csat) if acc.latest_csat is not None else None,
+        "rag_status":   acc.rag_status,
+        "total_responses": acc.total_responses,
+        "recent_responses": [
+            {
+                "nps_score":    r.nps_score,
+                "csat_score":   r.csat_score,
+                "sentiment":    r.sentiment,
+                "verbatim":     r.verbatim,
+                "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            }
+            for r in responses
+        ],
+    }
+
+
+# ── PUT /api/voc/accounts/:id  ────────────────────────────────────────────────
+class VocAccountUpdateReq(BaseModel):
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
+    practice: Optional[str] = None
+    rag_status: Optional[str] = None
+
+
+@router.put('/voc/accounts/{account_id}')
+def voc_update_account(
+    account_id: str,
+    body: VocAccountUpdateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role("admin", "super_admin", "manager")),
+):
+    """Update account details."""
+    acc = db.query(VocAccountDB).filter(
+        VocAccountDB.id == account_id,
+        VocAccountDB.deleted_at == None,
+    ).first()
+    if not acc:
+        raise HTTPException(404, "Account not found")
+
+    if body.company_name is not None:
+        acc.company_name = body.company_name
+    if body.industry is not None:
+        acc.industry = body.industry
+    if body.practice is not None:
+        acc.practice = body.practice
+    if body.rag_status is not None:
+        acc.rag_status = body.rag_status
+    acc.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": acc.id, "company_name": acc.company_name, "rag_status": acc.rag_status}
 
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────

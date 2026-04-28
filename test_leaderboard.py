@@ -4,7 +4,7 @@ import json
 import re
 import subprocess
 
-BASE_URL = "https://pending-tasks-19.preview.emergentagent.com/api"
+BASE_URL = "https://init-demo-2.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@hitachi-systems.com"
 ADMIN_PASSWORD = "Admin@123"
 

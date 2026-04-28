@@ -257,6 +257,119 @@ def _seed_content(engine):
     print(f"[seed] Content: {n_pillars} pillars, {n_icons} icons, {n_edm} EDM slides, {n_quotes} quotes",
           flush=True)
 
+    # ── Sprint H — Analytics demo data (xp_ledger + best_practices) ──────────
+    _seed_analytics_demo(engine)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  Sprint H — Analytics demo data so charts aren't empty for new installs
+# ═════════════════════════════════════════════════════════════════════════════
+def _seed_analytics_demo(engine):
+    """Backfill ~12 weeks of varied xp_ledger entries + a few practices so
+    /admin/analytics/* charts render with real data on a fresh DB.
+    Idempotent: skipped entirely if the demo marker row already exists.
+    """
+    import random as _rnd
+    from datetime import datetime, timezone, timedelta
+    from server import (UserDB, BestPracticeDB, ReplicationDB, TechDayDB,
+                        XpLedgerDB)
+
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    db = Session()
+    try:
+        # Idempotency marker — first BP with this title => seed already ran.
+        marker_title = "[seed-demo] Cross-team retro template"
+        if db.query(BestPracticeDB).filter(BestPracticeDB.title == marker_title).first():
+            db.close()
+            return
+
+        employees = db.query(UserDB).filter(
+            UserDB.role.in_(['employee', 'manager']),
+            UserDB.is_active.is_(True)
+        ).all()
+        if not employees:
+            db.close()
+            return
+
+        admin = db.query(UserDB).filter(UserDB.role.in_(['admin', 'super_admin'])).first()
+        approver_id = admin.id if admin else employees[0].id
+
+        rng = _rnd.Random(42)   # deterministic
+
+        # ── Backfill 12 weeks of XP ledger entries ──────────────────────────
+        now = datetime.now(timezone.utc)
+        sources = [
+            ('original_practice', (40, 120)),
+            ('replication',       (20, 80)),
+            ('tech_day',          (15, 50)),
+            ('certification',     (25, 60)),
+        ]
+        n_xp = 0
+        for week in range(12):
+            ts = now - timedelta(days=week * 7 + rng.randint(0, 6))
+            qn = (ts.month - 1) // 3 + 1
+            quarter = f"{ts.year}-Q{qn}"
+            # 4–8 entries per week, spread across 3–5 employees
+            for _ in range(rng.randint(4, 8)):
+                u = rng.choice(employees)
+                src, (lo, hi) = rng.choice(sources)
+                delta = rng.randint(lo, hi)
+                # Compute running balance lazily — just use cumulative best-effort
+                bal = (db.query(XpLedgerDB)
+                         .filter(XpLedgerDB.user_id == u.id)
+                         .count() + 1) * delta   # not exact, but non-null
+                db.add(XpLedgerDB(
+                    user_id=u.id, xp_delta=delta, xp_balance=bal,
+                    source_type=src,
+                    source_id=f"seed-{src}-{week}-{rng.randint(1000, 9999)}",
+                    quarter=quarter,
+                    created_at=ts,
+                ))
+                n_xp += 1
+
+        # ── A handful of approved best practices for funnel charts ──────────
+        bp_seed = [
+            (marker_title,
+             "Standardise sprint retros across pods. Reusable template + facilitator guide.",
+             'medium', 'transform'),
+            ("[seed-demo] Auto-renewal nudge for AMC contracts",
+             "Email + Slack reminder cadence 30/15/7 days pre-renewal.",
+             'easy', 'retain'),
+            ("[seed-demo] Dashboard: per-pod XP velocity",
+             "Single-glance weekly XP-per-FTE for managers.",
+             'hard', 'accelerate'),
+            ("[seed-demo] One-click incident war-room",
+             "Pre-staged channel + on-call ping + status-page draft.",
+             'medium', 'accelerate'),
+            ("[seed-demo] AMC pricing simulator v2",
+             "What-if pricing + margin impact in a single sheet.",
+             'hard', 'transform'),
+        ]
+        n_bp = 0
+        for title, summary, diff, art in bp_seed:
+            if db.query(BestPracticeDB).filter(BestPracticeDB.title == title).first():
+                continue
+            author = rng.choice(employees)
+            xp = {'easy': 50, 'medium': 100, 'hard': 200}.get(diff, 100)
+            db.add(BestPracticeDB(
+                title=title, summary=summary,
+                difficulty=diff, art_tag=art,
+                author_id=author.id, status='approved',
+                xp_awarded=xp, reviewer_id=approver_id,
+                reviewed_at=now - timedelta(days=rng.randint(2, 60)),
+                created_at=now - timedelta(days=rng.randint(5, 75)),
+            ))
+            n_bp += 1
+
+        db.commit()
+        print(f"[seed] Analytics demo: {n_xp} xp_ledger rows, {n_bp} best practices",
+              flush=True)
+    except Exception as e:
+        db.rollback()
+        print(f"[seed] Analytics demo skipped: {e}", flush=True)
+    finally:
+        db.close()
+
 
 if __name__ == '__main__':
     run_seed()

@@ -132,13 +132,21 @@ export default function AdminPage() {
         {/* Quick Links */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {[
-            { to: "/admin/console", emoji: "🖥️", label: "Admin Console", desc: "Dark CMS — EDM, icons, pillars, quotes" },
-            { to: "/admin/approvals", emoji: "✅", label: "Approval Queue", desc: "Practices, Tech Days, Replications, Certs" },
-            { to: "/admin/analytics", emoji: "📊", label: "Analytics", desc: "XP trends, contributors, revenue" },
-            { to: "/admin/payout", emoji: "💰", label: "Payroll Payout", desc: "Export CSV/PDF, approve payroll" },
-            { to: "/admin/notifications", emoji: "🔔", label: "Notifications", desc: "Send broadcasts to teams" },
-          ].map(({ to, emoji, label, desc }) => (
+            { to: "/admin/console",       emoji: "🖥️", label: "Admin Console",   desc: "Dark CMS — EDM, icons, pillars, quotes",
+              tip: "Live-edit home EDM slides, motivational quotes, pillar metadata and per-pillar app icons. Changes broadcast to all clients via WebSocket on Publish." },
+            { to: "/admin/approvals",     emoji: "✅", label: "Approval Queue",   desc: "Practices, Tech Days, Replications, Certs",
+              tip: "Review and approve user submissions. Approving auto-credits XP to the ledger and triggers an in-app notification." },
+            { to: "/admin/analytics",     emoji: "📊", label: "Analytics",        desc: "XP trends, contributors, revenue",
+              tip: "Org-wide XP weekly/monthly trends, top XP earners, practice funnel (submitted → approved → replicated), and revenue rollup." },
+            { to: "/admin/payout",        emoji: "💰", label: "Payroll Payout",   desc: "Export CSV/PDF, approve payroll",
+              tip: "Quarterly payout state machine — Draft → Approved → Paid (or On Hold / Cancelled). Export CSV or branded PDF for finance handoff." },
+            { to: "/admin/notifications", emoji: "🔔", label: "Notifications",    desc: "Send broadcasts to teams",
+              tip: "Compose targeted broadcasts (all / role / department / individual). Schedule for later or send immediately." },
+          ].map(({ to, emoji, label, desc, tip }) => (
             <Link key={to} to={to}
+              title={tip}
+              aria-label={`${label} — ${tip}`}
+              data-testid={`quick-link-${to.replace(/\//g, "-").replace(/^-/, "")}`}
               className="bg-white border rounded-xl p-4 hover:shadow-md hover:border-[#CC0000]/30 transition-all group">
               <span className="text-2xl mb-2 block">{emoji}</span>
               <p className="text-sm font-semibold text-gray-900 group-hover:text-[#CC0000]">{label}</p>

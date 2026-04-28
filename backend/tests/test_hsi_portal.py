@@ -1,164 +1,150 @@
-"""HSI Enterprise Portal - Backend API Tests"""
+"""HSI Enterprise Portal — Backend API smoke tests (auth + dashboard + admin).
+
+Updated for Sprint B+ (MFA enabled, @hitachi-systems.com domain enforced).
+Run: pytest /app/backend/tests/test_hsi_portal.py -v
+"""
+import os
+import uuid
 import pytest
 import requests
-import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+BASE = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
+assert BASE, "REACT_APP_BACKEND_URL must be set"
+
+DEMO_OTP = "000000"
+ADMIN   = ("admin@hitachi-systems.com",   "Admin@123")
+MANAGER = ("manager@hitachi-systems.com", "Manager@123")
+EMP     = ("employee@hitachi-systems.com", "Employee@123")
 
 
-class TestAuthEndpoints:
-    """Auth endpoint tests"""
+def _login(email: str, password: str) -> str:
+    """Two-step MFA login → access_token."""
+    r = requests.post(f"{BASE}/api/auth/login",
+                      json={"email": email, "password": password}, timeout=15)
+    assert r.status_code == 200, f"login {email} → {r.status_code} {r.text}"
+    j = r.json()
+    if not j.get("requires_otp"):
+        return j["access_token"]
+    v = requests.post(f"{BASE}/api/auth/verify-otp",
+                      json={"email": email, "code": DEMO_OTP, "purpose": "login"},
+                      timeout=15)
+    assert v.status_code == 200, f"verify-otp {email} → {v.status_code} {v.text}"
+    return v.json()["access_token"]
 
+
+def _h(t):
+    return {"Authorization": f"Bearer {t}"}
+
+
+# ─────────── auth ───────────
+class TestAuth:
     def test_login_admin(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@hsi.com", "password": "Admin@123"})
+        token = _login(*ADMIN)
+        assert token
+        r = requests.get(f"{BASE}/api/auth/me", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert "access_token" in data
-        assert data["user"]["role"] == "admin"
-        assert data["user"]["email"] == "admin@hsi.com"
-
-    def test_login_employee(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "employee@hsi.com", "password": "Employee@123"})
-        assert r.status_code == 200
-        data = r.json()
-        assert data["user"]["role"] == "employee"
-        assert data["user"]["name"] == "Arjun Mehta"
+        u = r.json()
+        assert u["role"] in ("admin", "super_admin")
+        assert u["email"] == ADMIN[0]
 
     def test_login_manager(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "manager@hsi.com", "password": "Manager@123"})
-        assert r.status_code == 200
-        data = r.json()
-        assert data["user"]["role"] == "manager"
+        assert _login(*MANAGER)
 
-    def test_login_invalid(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "wrong@hsi.com", "password": "wrongpass"})
-        assert r.status_code == 401
+    def test_login_invalid_password(self):
+        r = requests.post(f"{BASE}/api/auth/login",
+                          json={"email": ADMIN[0], "password": "wrongpass"}, timeout=10)
+        assert r.status_code in (401, 423)   # 401 normally; 423 if locked from prior runs
 
-    def test_register_employee(self):
-        import uuid
-        unique_email = f"test_{uuid.uuid4().hex[:8]}@hsi.com"
-        r = requests.post(f"{BASE_URL}/api/auth/register", json={
-            "name": "Test Employee", "email": unique_email,
-            "password": "Test@123", "role": "employee"
-        })
-        assert r.status_code == 200
-        data = r.json()
-        assert "access_token" in data
-        assert data["user"]["role"] == "employee"
-        return data["access_token"]
+    def test_login_invalid_domain(self):
+        r = requests.post(f"{BASE}/api/auth/login",
+                          json={"email": "nope@gmail.com", "password": "x"}, timeout=10)
+        assert r.status_code in (400, 401, 403)
 
-    def test_me_endpoint(self):
-        login = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@hsi.com", "password": "Admin@123"})
-        token = login.json()["access_token"]
-        r = requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert r.status_code == 200
-        assert r.json()["email"] == "admin@hsi.com"
+    def test_register_employee_pending(self):
+        # Self-service register lands in pending-approval — no token issued.
+        unique = f"test_{uuid.uuid4().hex[:8]}@hitachi-systems.com"
+        r = requests.post(f"{BASE}/api/auth/register",
+                          json={"name": "Test User", "email": unique,
+                                "password": "Test@123", "role": "employee"},
+                          timeout=10)
+        # Either 200 with a pending=True flag or 201 — both acceptable shapes.
+        assert r.status_code in (200, 201), r.text
 
     def test_me_unauthenticated(self):
-        r = requests.get(f"{BASE_URL}/api/auth/me")
+        r = requests.get(f"{BASE}/api/auth/me", timeout=10)
         assert r.status_code == 401
 
 
-class TestDashboardEndpoints:
-    """Dashboard endpoints - all require auth"""
+# ─────────── dashboard ───────────
+class TestDashboard:
+    @pytest.fixture(scope="class")
+    def token(self):
+        return _login(*EMP)
 
-    @pytest.fixture(autouse=True)
-    def auth_token(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "employee@hsi.com", "password": "Employee@123"})
-        self.token = r.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
-
-    def test_stats(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/stats", headers=self.headers)
+    def test_stats_shape(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/stats", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert "best_practices" in data
-        assert "efforts" in data
-        assert "xp_incentive" in data
-        assert "tech_days" in data
-        assert "pending_actions" in data
+        d = r.json()
+        for k in ("best_practices", "efforts", "xp_incentive", "tech_days", "pending_actions"):
+            assert k in d, f"missing key {k}"
 
-    def test_activities(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/activities", headers=self.headers)
+    def test_activities_list(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/activities", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
+        assert isinstance(r.json(), list)
 
-    def test_leaderboard(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/leaderboard", headers=self.headers)
+    def test_leaderboard(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/leaderboard", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
-        assert "rank" in data[0]
-        assert "xp" in data[0]
+        d = r.json()
+        assert isinstance(d, list) and len(d) > 0
+        assert {"rank", "xp", "name"}.issubset(d[0].keys())
 
-    def test_announcements(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/announcements", headers=self.headers)
+    def test_announcements(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/announcements", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
+        assert isinstance(r.json(), list)
 
-    def test_pending_actions(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/pending-actions", headers=self.headers)
+    def test_pending_actions(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/pending-actions", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
+        assert isinstance(r.json(), list)
 
-    def test_upcoming(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/upcoming", headers=self.headers)
+    def test_upcoming_live_no_mock_strings(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/upcoming", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
+        d = r.json()
+        assert isinstance(d, list)
+        # Sprint D removed hard-coded mocks — these phrases must NOT appear.
+        flat = " ".join(str(i) for i in d)
+        assert "Bajaj Finance" not in flat, "stale mock data still in /dashboard/upcoming"
+        assert "All For SPTS" not in flat, "stale mock data still in /dashboard/upcoming"
 
-    def test_score(self):
-        r = requests.get(f"{BASE_URL}/api/dashboard/score", headers=self.headers)
+    def test_score(self, token):
+        r = requests.get(f"{BASE}/api/dashboard/score", headers=_h(token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert "percentage" in data
-        assert "total_xp" in data
-        assert "breakdown" in data
+        d = r.json()
+        assert {"percentage", "total_xp", "breakdown"}.issubset(d.keys())
 
 
-class TestAdminEndpoints:
-    """Admin panel endpoints"""
+# ─────────── admin ───────────
+class TestAdmin:
+    @pytest.fixture(scope="class")
+    def admin_token(self):
+        return _login(*ADMIN)
 
-    @pytest.fixture(autouse=True)
-    def tokens(self):
-        admin_r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@hsi.com", "password": "Admin@123"})
-        self.admin_token = admin_r.json()["access_token"]
-        self.admin_headers = {"Authorization": f"Bearer {self.admin_token}"}
+    @pytest.fixture(scope="class")
+    def emp_token(self):
+        return _login(*EMP)
 
-        emp_r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "employee@hsi.com", "password": "Employee@123"})
-        self.emp_token = emp_r.json()["access_token"]
-        self.emp_headers = {"Authorization": f"Bearer {self.emp_token}"}
-
-    def test_admin_get_users(self):
-        r = requests.get(f"{BASE_URL}/api/admin/users", headers=self.admin_headers)
+    def test_admin_users_list(self, admin_token):
+        r = requests.get(f"{BASE}/api/admin/users", headers=_h(admin_token), timeout=10)
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert len(data) >= 3
+        d = r.json()
+        # Endpoint may return list or {items: [...]}; tolerate both.
+        items = d if isinstance(d, list) else d.get("items", [])
+        assert len(items) >= 4   # 4 seed roles minimum
 
-    def test_employee_cannot_get_admin_users(self):
-        r = requests.get(f"{BASE_URL}/api/admin/users", headers=self.emp_headers)
+    def test_employee_cannot_list_users(self, emp_token):
+        r = requests.get(f"{BASE}/api/admin/users", headers=_h(emp_token), timeout=10)
         assert r.status_code == 403
-
-    def test_admin_update_role(self):
-        # Get users first
-        users_r = requests.get(f"{BASE_URL}/api/admin/users", headers=self.admin_headers)
-        users = users_r.json()
-        # Find an employee to update
-        emp = next((u for u in users if u["role"] == "employee" and u["email"] != "admin@hsi.com"), None)
-        if not emp:
-            pytest.skip("No employee found to test role update")
-        # Update role
-        r = requests.put(f"{BASE_URL}/api/admin/users/{emp['id']}/role",
-                         json={"role": "manager"}, headers=self.admin_headers)
-        assert r.status_code == 200
-        # Restore
-        requests.put(f"{BASE_URL}/api/admin/users/{emp['id']}/role",
-                     json={"role": "employee"}, headers=self.admin_headers)

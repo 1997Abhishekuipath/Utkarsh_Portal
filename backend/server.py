@@ -1119,6 +1119,8 @@ def user_to_dict(u: UserDB) -> dict:
         'email': u.email, 'role': u.role, 'department': u.department,
         'practice': u.practice, 'designation': u.designation,
         'employee_id': u.employee_id, 'avatar_url': u.avatar_url,
+        'phone': u.phone,
+        'date_of_birth': u.date_of_birth.isoformat() if u.date_of_birth else None,
         'art_tags': list(u.art_tags or []), 'xp_points': u.xp_points,
         'is_active': u.is_active, 'is_verified': u.is_verified,
         'last_login_at': u.last_login_at.isoformat() if u.last_login_at else None,
@@ -3197,7 +3199,7 @@ def admin_payout_csv(quarter: str,
         w.writerow([i['employee_id'], i['name'], i['email'], i['department'], i['practice'],
                     i['xp_original'], i['xp_replication'], i['xp_tech_day'],
                     i['xp_other'], i['xp_total'], i['amount_inr']])
-    buf.seek(0)
+    # Append TOTAL footer (do NOT seek(0) — that would overwrite the header).
     total = sum(i['amount_inr'] for i in items)
     w.writerow([])
     w.writerow(['', '', '', '', '', '', '', '', '', 'TOTAL', round(total, 2)])

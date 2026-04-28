@@ -357,20 +357,21 @@ function HomeEDMPage({ authHeader, toast }) {
                     {s.tag && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ background: s.tag_color || "#D4A84A", color: "#000" }}>{s.tag}</span>}
                   </div>
                   {/* Editor */}
-                  <div className="p-3 bg-[#201618] grid grid-cols-2 gap-2">
+                  <div className="p-3 bg-[#201618] grid grid-cols-2 gap-2" data-testid={`edm-row-${s.id}`}>
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TITLE</div>
-                      <input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} />
+                      <input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} data-testid={`edm-title-${s.id}`} />
                     </div>
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">SUBTITLE</div>
-                      <input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} />
+                      <input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} data-testid={`edm-subtitle-${s.id}`} />
                     </div>
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">FROM COLOR</div>
                       <div className="flex items-center gap-2">
                         <input type="color" defaultValue={s.gradient_from || "#C8281E"}
                           onChange={e => update(s.id, "gradient_from", e.target.value)}
+                          data-testid={`edm-from-color-${s.id}`}
                           className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
                         <input defaultValue={s.gradient_from}
                           onBlur={e => update(s.id, "gradient_from", e.target.value)}
@@ -382,6 +383,7 @@ function HomeEDMPage({ authHeader, toast }) {
                       <div className="flex items-center gap-2">
                         <input type="color" defaultValue={s.gradient_to || "#9B1A12"}
                           onChange={e => update(s.id, "gradient_to", e.target.value)}
+                          data-testid={`edm-to-color-${s.id}`}
                           className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
                         <input defaultValue={s.gradient_to}
                           onBlur={e => update(s.id, "gradient_to", e.target.value)}
@@ -390,10 +392,10 @@ function HomeEDMPage({ authHeader, toast }) {
                     </div>
                     <div>
                       <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TAG</div>
-                      <input defaultValue={s.tag} onBlur={e => update(s.id, "tag", e.target.value)} placeholder="e.g. INCENTIVE" className={inputCls} />
+                      <input defaultValue={s.tag} onBlur={e => update(s.id, "tag", e.target.value)} placeholder="e.g. INCENTIVE" className={inputCls} data-testid={`edm-tag-${s.id}`} />
                     </div>
                     <div className="flex items-end justify-end">
-                      <Btn variant="danger" onClick={() => del(s.id)}><Trash2 size={12} /> Delete</Btn>
+                      <Btn variant="danger" onClick={() => del(s.id)} data-testid={`edm-delete-${s.id}`}><Trash2 size={12} /> Delete</Btn>
                     </div>
                   </div>
                 </div>
@@ -439,14 +441,14 @@ function QuotesPage({ authHeader, toast }) {
           : quotes.length === 0 ? <div className="text-center py-12 text-[#4A4040] text-sm">No quotes yet — click Add Quote</div>
           : (
             <div className="space-y-2">
-              {quotes.map((q, i) => (
-                <div key={q.id} className="flex items-start gap-3 bg-[#201618] rounded-xl p-3">
+              {quotes.map((q) => (
+                <div key={q.id} className="flex items-start gap-3 bg-[#201618] rounded-xl p-3" data-testid={`quote-row-${q.id}`}>
                   <div className="text-[#4A4040] font-black text-lg leading-none mt-0.5">"{/* */}</div>
                   <div className="flex-1 space-y-2">
-                    <textarea defaultValue={q.text} onBlur={e => update(q.id, "text", e.target.value)} rows={2} className={cls(inputCls, "resize-none")} placeholder="Quote text…" />
-                    <input defaultValue={q.source} onBlur={e => update(q.id, "source", e.target.value)} className={inputCls} placeholder="Source / attribution" />
+                    <textarea defaultValue={q.text} onBlur={e => update(q.id, "text", e.target.value)} rows={2} className={cls(inputCls, "resize-none")} placeholder="Quote text…" data-testid={`quote-text-${q.id}`} />
+                    <input defaultValue={q.source} onBlur={e => update(q.id, "source", e.target.value)} className={inputCls} placeholder="Source / attribution" data-testid={`quote-source-${q.id}`} />
                   </div>
-                  <Btn variant="danger" onClick={() => del(q.id)}><Trash2 size={12} /></Btn>
+                  <Btn variant="danger" onClick={() => del(q.id)} data-testid={`quote-delete-${q.id}`}><Trash2 size={12} /></Btn>
                 </div>
               ))}
             </div>
@@ -482,7 +484,7 @@ function PillarManagerPage({ authHeader, toast }) {
           : (
             <div className="grid grid-cols-2 gap-4">
               {pillars.map(p => (
-                <div key={p.id} className="bg-[#201618] rounded-xl overflow-hidden border border-[#2A1C1E]">
+                <div key={p.id} className="bg-[#201618] rounded-xl overflow-hidden border border-[#2A1C1E]" data-testid={`pillar-row-${p.id}`}>
                   <div className="p-3 flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${p.gradient_from || "#C8281E"}, ${p.gradient_to || "#9B1A12"})` }}>
                     <span className="text-2xl">{p.icon_name || "🏛️"}</span>
                     <div>
@@ -493,11 +495,11 @@ function PillarManagerPage({ authHeader, toast }) {
                   <div className="p-3 space-y-2">
                     <div>
                       <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">TAGLINE</div>
-                      <input defaultValue={p.tagline} onBlur={e => update(p.id, "tagline", e.target.value)} className={inputCls} />
+                      <input defaultValue={p.tagline} onBlur={e => update(p.id, "tagline", e.target.value)} className={inputCls} data-testid={`pillar-tagline-${p.id}`} />
                     </div>
                     <div>
                       <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">DESCRIPTION</div>
-                      <input defaultValue={p.description} onBlur={e => update(p.id, "description", e.target.value)} className={inputCls} />
+                      <input defaultValue={p.description} onBlur={e => update(p.id, "description", e.target.value)} className={inputCls} data-testid={`pillar-description-${p.id}`} />
                     </div>
                     <div className="flex gap-2">
                       <div className="flex-1">
@@ -505,6 +507,7 @@ function PillarManagerPage({ authHeader, toast }) {
                         <div className="flex gap-1">
                           <input type="color" defaultValue={p.gradient_from || "#C8281E"}
                             onChange={e => update(p.id, "gradient_from", e.target.value)}
+                            data-testid={`pillar-from-color-${p.id}`}
                             className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
                           <input defaultValue={p.gradient_from}
                             onBlur={e => update(p.id, "gradient_from", e.target.value)}
@@ -516,6 +519,7 @@ function PillarManagerPage({ authHeader, toast }) {
                         <div className="flex gap-1">
                           <input type="color" defaultValue={p.gradient_to || "#9B1A12"}
                             onChange={e => update(p.id, "gradient_to", e.target.value)}
+                            data-testid={`pillar-to-color-${p.id}`}
                             className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
                           <input defaultValue={p.gradient_to}
                             onBlur={e => update(p.id, "gradient_to", e.target.value)}
@@ -595,17 +599,18 @@ function IconManagerPage({ authHeader, toast }) {
           {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div> : (
             <div className="grid grid-cols-2 gap-2">
               {icons.map(ic => (
-                <div key={ic.id} className="bg-[#201618] rounded-xl p-3 flex items-start gap-2">
+                <div key={ic.id} className="bg-[#201618] rounded-xl p-3 flex items-start gap-2" data-testid={`icon-row-${ic.id}`}>
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-black" style={{ background: ic.card_color || "#C8281E" }}>
                     ⬡
                   </div>
                   <div className="flex-1 min-w-0 space-y-1.5">
-                    <input defaultValue={ic.name} onBlur={e => update(ic.id, "name", e.target.value)} className={inputCls} placeholder="App name" />
-                    <input defaultValue={ic.lucide_icon} onBlur={e => update(ic.id, "lucide_icon", e.target.value)} className={inputCls} placeholder="Lucide icon (e.g. Award)" />
-                    <input defaultValue={ic.route} onBlur={e => update(ic.id, "route", e.target.value)} className={inputCls} placeholder="/apps/route" />
+                    <input defaultValue={ic.name} onBlur={e => update(ic.id, "name", e.target.value)} className={inputCls} placeholder="App name" data-testid={`icon-name-${ic.id}`} />
+                    <input defaultValue={ic.lucide_icon} onBlur={e => update(ic.id, "lucide_icon", e.target.value)} className={inputCls} placeholder="Lucide icon (e.g. Award)" data-testid={`icon-lucide-${ic.id}`} />
+                    <input defaultValue={ic.route} onBlur={e => update(ic.id, "route", e.target.value)} className={inputCls} placeholder="/apps/route" data-testid={`icon-route-${ic.id}`} />
                     <div className="flex gap-1">
                       {["", "hot", "new"].map(b => (
                         <button key={b} onClick={() => update(ic.id, "badge", b)}
+                          data-testid={`icon-badge-${ic.id}-${b || "none"}`}
                           className={cls("px-2 py-0.5 rounded text-[9px] font-black transition-all",
                             ic.badge === b ? "bg-[#C8281E] text-white" : "bg-[#2A1C1E] text-[#8A8080] hover:text-white")}>
                           {b || "none"}
@@ -613,7 +618,7 @@ function IconManagerPage({ authHeader, toast }) {
                       ))}
                     </div>
                   </div>
-                  <Btn variant="danger" onClick={() => del(ic.id)}><Trash2 size={11} /></Btn>
+                  <Btn variant="danger" onClick={() => del(ic.id)} data-testid={`icon-delete-${ic.id}`}><Trash2 size={11} /></Btn>
                 </div>
               ))}
             </div>
@@ -684,15 +689,15 @@ function PillarEDMPage({ authHeader, toast }) {
             : (
               <div className="space-y-3">
                 {slides.map(s => (
-                  <div key={s.id} className="border border-[#2A1C1E] rounded-xl overflow-hidden">
+                  <div key={s.id} className="border border-[#2A1C1E] rounded-xl overflow-hidden" data-testid={`pedm-row-${s.id}`}>
                     <div className="p-4" style={{ background: `linear-gradient(135deg, ${s.gradient_from || "#C8281E"}, ${s.gradient_to || "#9B1A12"})` }}>
                       <div className="font-black text-xl text-white">{s.title}</div>
                       <div className="text-white/70 text-xs">{s.subtitle}</div>
                     </div>
                     <div className="p-3 bg-[#201618] grid grid-cols-2 gap-2">
-                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TITLE</div><input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} /></div>
-                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">SUBTITLE</div><input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} /></div>
-                      <div className="flex items-end justify-end col-span-2"><Btn variant="danger" onClick={() => del(s.id)}><Trash2 size={12} /> Delete</Btn></div>
+                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TITLE</div><input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} data-testid={`pedm-title-${s.id}`} /></div>
+                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">SUBTITLE</div><input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} data-testid={`pedm-subtitle-${s.id}`} /></div>
+                      <div className="flex items-end justify-end col-span-2"><Btn variant="danger" onClick={() => del(s.id)} data-testid={`pedm-delete-${s.id}`}><Trash2 size={12} /> Delete</Btn></div>
                     </div>
                   </div>
                 ))}

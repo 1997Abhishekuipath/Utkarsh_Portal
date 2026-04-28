@@ -71,7 +71,7 @@ function App() {
           <Route path="/admin/payout" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminPayoutPage /></ProtectedRoute>} />
           {/* Approvals (Practices / Replications / Tech Days / Certs) */}
           <Route path="/admin/approvals" element={<ProtectedRoute requiredRoles={["admin", "super_admin", "manager"]}><AdminApprovalsPage /></ProtectedRoute>} />
-          {/* Full Admin Console (dark CMS) */}
+          {/* Full Admin Console (light theme) */}
           <Route path="/admin/console" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminConsolePage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

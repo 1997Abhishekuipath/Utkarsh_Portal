@@ -46,7 +46,7 @@ from starlette.responses import Response
 from sqlalchemy import (
     create_engine, Column, String, DateTime, Date, Integer, BigInteger,
     Boolean, ForeignKey, CheckConstraint, Index, text, Numeric, SmallInteger,
-    Float,
+    Float, func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
@@ -953,10 +953,10 @@ def _seed_voc_workflow_tasks():
         db.close()
 
 
-_seed_voc_workflow_tasks()
-
-
 _seed_voc_demo_data()
+
+
+_seed_voc_workflow_tasks()
 
 
 class RegisterReq(BaseModel):
@@ -4703,6 +4703,295 @@ def voc_public_submit_survey(token: str, body: VocPublicSubmitReq, db: Session =
         "response_id":   resp.id,
         "thank_you_msg": survey.thank_you_msg if survey else "Thank you for your feedback!",
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PHASE 3 — AI Insights & Workflow Tasks (OpenRouter integration)
+# ──────────────────────────────────────────────────────────────────────────────
+import json as _json
+import httpx as _httpx
+
+OPENROUTER_API_KEY  = os.environ.get('OPENROUTER_API_KEY', '')
+OPENROUTER_BASE_URL = os.environ.get('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1/chat/completions')
+OPENROUTER_MODEL    = os.environ.get('OPENROUTER_MODEL', 'anthropic/claude-3.5-sonnet')
+OPENROUTER_SITE_URL = os.environ.get('OPENROUTER_SITE_URL', '')
+OPENROUTER_SITE_NAME = os.environ.get('OPENROUTER_SITE_NAME', '')
+
+
+class VocInsightGenerateReq(BaseModel):
+    period:     Optional[str] = None     # e.g. "Q2 2026" — informational only
+    account_id: Optional[str] = None     # restrict to single account
+    days:       Optional[int] = 90       # look-back window
+
+
+def _voc_build_insight_prompt(rows: list, kpis: dict) -> str:
+    """Build a compact, structured prompt for the LLM."""
+    sample = []
+    for r in rows[:60]:                  # cap tokens
+        sample.append({
+            "nps":  r.nps_score,
+            "csat": r.csat_score,
+            "sent": r.sentiment,
+            "tags": list(r.pain_tags or []),
+            "text": (r.verbatim or '')[:280],
+        })
+    return (
+        "You are a senior CX analyst for Hitachi Systems India. Analyse the survey "
+        "responses below and return STRICT JSON (no markdown, no prose) with this shape:\n"
+        "{\n"
+        '  "executive_summary": "2-3 sentence McKinsey SCR-style summary",\n'
+        '  "key_themes": [{"theme": "string", "frequency": int, "sentiment": "positive|negative|mixed"}],\n'
+        '  "pain_points": [{"issue": "string", "severity": "high|medium|low", "evidence": "string"}],\n'
+        '  "strengths":   [{"strength": "string", "evidence": "string"}],\n'
+        '  "recommendations": [{"action": "string", "owner": "string", "priority": "P0|P1|P2", "expected_impact": "string"}],\n'
+        '  "risk_accounts": ["short note 1","short note 2"]\n'
+        "}\n\n"
+        f"KPIs: {_json.dumps(kpis)}\n"
+        f"Responses ({len(sample)} of {len(rows)}): {_json.dumps(sample)}"
+    )
+
+
+@router.post('/voc/insights/generate')
+async def voc_insights_generate(
+    body: VocInsightGenerateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    """Generate AI insight snapshot via OpenRouter and persist it."""
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="OpenRouter not configured")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, body.days or 90))
+    q = db.query(VocResponseDB).filter(VocResponseDB.submitted_at >= cutoff)
+    if body.account_id:
+        q = q.filter(VocResponseDB.account_id == body.account_id)
+    rows = q.order_by(VocResponseDB.submitted_at.desc()).limit(300).all()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No responses available for the selected window")
+
+    nps_scored  = [r for r in rows if r.nps_score  is not None]
+    csat_scored = [r for r in rows if r.csat_score is not None]
+    promoters  = sum(1 for r in nps_scored if r.nps_score >= 9)
+    detractors = sum(1 for r in nps_scored if r.nps_score <= 6)
+    nps_score  = round((promoters - detractors) / len(nps_scored) * 100) if nps_scored else None
+    csat_avg   = round(sum(r.csat_score for r in csat_scored) / len(csat_scored), 2) if csat_scored else None
+    kpis = {
+        "total_responses": len(rows),
+        "nps_score":       nps_score,
+        "csat_avg":        csat_avg,
+        "promoters":       promoters,
+        "detractors":      detractors,
+        "passives":        len(nps_scored) - promoters - detractors,
+    }
+
+    prompt = _voc_build_insight_prompt(rows, kpis)
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a senior CX analyst. Return STRICT JSON only."},
+            {"role": "user",   "content": prompt},
+        ],
+        "temperature": 0.3,
+        "response_format": {"type": "json_object"},
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    if OPENROUTER_SITE_URL:  headers["HTTP-Referer"] = OPENROUTER_SITE_URL
+    if OPENROUTER_SITE_NAME: headers["X-Title"]      = OPENROUTER_SITE_NAME
+
+    try:
+        async with _httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(OPENROUTER_BASE_URL, headers=headers, json=payload)
+        if resp.status_code != 200:
+            logging.error(f"[voc-insight] OpenRouter {resp.status_code}: {resp.text[:300]}")
+            raise HTTPException(status_code=502, detail=f"OpenRouter error: {resp.status_code}")
+        data = resp.json()
+        content = (data.get('choices') or [{}])[0].get('message', {}).get('content', '')
+        try:
+            insights = _json.loads(content)
+        except Exception:
+            insights = {"executive_summary": content[:1000], "key_themes": [], "pain_points": [],
+                        "strengths": [], "recommendations": [], "risk_accounts": []}
+    except _httpx.HTTPError as exc:
+        logging.error(f"[voc-insight] httpx error: {exc}")
+        raise HTTPException(status_code=502, detail="Upstream LLM unavailable")
+
+    row = VocAiInsightDB(
+        period          = body.period,
+        total_responses = kpis["total_responses"],
+        nps_score       = kpis["nps_score"],
+        csat_score      = kpis["csat_avg"],
+        insights_json   = _json.dumps(insights),
+        model_used      = OPENROUTER_MODEL,
+        generated_by    = current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    return {
+        "id":              row.id,
+        "period":          row.period,
+        "total_responses": row.total_responses,
+        "nps_score":       row.nps_score,
+        "csat_score":      float(row.csat_score) if row.csat_score is not None else None,
+        "model_used":      row.model_used,
+        "generated_at":    row.generated_at.isoformat() if row.generated_at else None,
+        "insights":        insights,
+    }
+
+
+@router.get('/voc/insights')
+def voc_insights_list(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """List the most recent AI insight snapshots."""
+    rows = (db.query(VocAiInsightDB)
+              .order_by(VocAiInsightDB.generated_at.desc())
+              .limit(limit).all())
+    out = []
+    for r in rows:
+        try:
+            ins = _json.loads(r.insights_json) if r.insights_json else {}
+        except Exception:
+            ins = {}
+        out.append({
+            "id":              r.id,
+            "period":          r.period,
+            "total_responses": r.total_responses,
+            "nps_score":       r.nps_score,
+            "csat_score":      float(r.csat_score) if r.csat_score is not None else None,
+            "model_used":      r.model_used,
+            "generated_at":    r.generated_at.isoformat() if r.generated_at else None,
+            "insights":        ins,
+        })
+    return out
+
+
+@router.get('/voc/insights/{insight_id}')
+def voc_insights_get(
+    insight_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    r = db.query(VocAiInsightDB).filter(VocAiInsightDB.id == insight_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Insight not found")
+    try:
+        ins = _json.loads(r.insights_json) if r.insights_json else {}
+    except Exception:
+        ins = {}
+    return {
+        "id":              r.id,
+        "period":          r.period,
+        "total_responses": r.total_responses,
+        "nps_score":       r.nps_score,
+        "csat_score":      float(r.csat_score) if r.csat_score is not None else None,
+        "model_used":      r.model_used,
+        "generated_at":    r.generated_at.isoformat() if r.generated_at else None,
+        "insights":        ins,
+    }
+
+
+@router.get('/voc/workflow/tasks')
+def voc_workflow_list(
+    status: Optional[str] = None,
+    account_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """List detractor follow-up tasks with response & account context."""
+    q = db.query(VocWorkflowTaskDB)
+    if status:     q = q.filter(VocWorkflowTaskDB.status == status)
+    if account_id: q = q.filter(VocWorkflowTaskDB.account_id == account_id)
+    tasks = q.order_by(VocWorkflowTaskDB.created_at.desc()).limit(200).all()
+
+    out = []
+    for t in tasks:
+        resp = db.query(VocResponseDB).filter(VocResponseDB.id == t.response_id).first() if t.response_id else None
+        acc  = db.query(VocAccountDB).filter(VocAccountDB.id == t.account_id).first() if t.account_id else None
+        assn = db.query(UserDB).filter(UserDB.id == t.assignee_id).first() if t.assignee_id else None
+        out.append({
+            "id":               t.id,
+            "status":           t.status,
+            "resolution_notes": t.resolution_notes,
+            "created_at":       t.created_at.isoformat() if t.created_at else None,
+            "resolved_at":      t.resolved_at.isoformat() if t.resolved_at else None,
+            "account_id":       t.account_id,
+            "account_name":     acc.company_name if acc else None,
+            "assignee_id":      t.assignee_id,
+            "assignee_name":    assn.name if assn else None,
+            "response": {
+                "id":        resp.id           if resp else None,
+                "nps":       resp.nps_score    if resp else None,
+                "csat":      resp.csat_score   if resp else None,
+                "verbatim":  resp.verbatim     if resp else None,
+                "sentiment": resp.sentiment    if resp else None,
+                "pain_tags": list(resp.pain_tags or []) if resp else [],
+                "respondent_email": resp.respondent_email if resp else None,
+            } if resp else None,
+        })
+    return out
+
+
+class VocWorkflowUpdateReq(BaseModel):
+    status:           Optional[str] = None      # open | in_progress | resolved
+    resolution_notes: Optional[str] = None
+    assignee_id:      Optional[str] = None
+
+
+@router.patch('/voc/workflow/tasks/{task_id}')
+def voc_workflow_update(
+    task_id: str,
+    body: VocWorkflowUpdateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    t = db.query(VocWorkflowTaskDB).filter(VocWorkflowTaskDB.id == task_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if body.status is not None:
+        if body.status not in ('open', 'in_progress', 'resolved'):
+            raise HTTPException(status_code=400, detail="Invalid status")
+        t.status = body.status
+        t.resolved_at = datetime.now(timezone.utc) if body.status == 'resolved' else None
+    if body.resolution_notes is not None:
+        t.resolution_notes = body.resolution_notes
+    if body.assignee_id is not None:
+        t.assignee_id = body.assignee_id or None
+
+    db.commit()
+    db.refresh(t)
+    return {
+        "id":               t.id,
+        "status":           t.status,
+        "resolution_notes": t.resolution_notes,
+        "assignee_id":      t.assignee_id,
+        "resolved_at":      t.resolved_at.isoformat() if t.resolved_at else None,
+    }
+
+
+@router.get('/voc/workflow/stats')
+def voc_workflow_stats(
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    """Counts by status for the workflow board."""
+    rows = db.query(VocWorkflowTaskDB.status, func.count(VocWorkflowTaskDB.id)) \
+             .group_by(VocWorkflowTaskDB.status).all()
+    counts = {s: 0 for s in ('open', 'in_progress', 'resolved')}
+    for status, cnt in rows:
+        counts[status] = cnt
+    counts["total"] = sum(counts[s] for s in ('open', 'in_progress', 'resolved'))
+    return counts
+
+
 
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────

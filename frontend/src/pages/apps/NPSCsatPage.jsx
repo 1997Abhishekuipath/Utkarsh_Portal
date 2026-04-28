@@ -121,6 +121,7 @@ export default function NPSCsatPage() {
               LIVE
             </div>
             <button data-testid="new-campaign-btn"
+              onClick={() => setActiveTab("EMAIL CAMPAIGNS")}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold tracking-wider border border-[#E2E8F0] text-[#64748B] bg-white hover:border-[#CC0000]/30 hover:text-[#0F172A] transition-colors">
               <Plus size={12} />NEW CAMPAIGN
             </button>

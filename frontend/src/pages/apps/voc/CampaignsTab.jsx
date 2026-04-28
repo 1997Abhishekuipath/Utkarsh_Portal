@@ -131,7 +131,7 @@ export default function CampaignsTab() {
         </div>
         <button onClick={() => { setShowForm(true); setError(null); }}
           className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors"
-          data-testid="new-campaign-btn">
+          data-testid="campaigns-new-btn">
           <Plus size={13} />NEW CAMPAIGN
         </button>
       </div>

@@ -587,6 +587,23 @@ class VocResponseDB(Base):
     )
 
 
+class VocEmailLogDB(Base):
+    """Email delivery event log (sent / opened / clicked / bounced)."""
+    __tablename__ = 'voc_email_logs'
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    campaign_id     = Column(String, ForeignKey('voc_campaigns.id'), nullable=True)
+    recipient_email = Column(String(255), nullable=False)
+    event_type      = Column(String(20), nullable=False, default='sent')
+    occurred_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('sent','opened','clicked','bounced','unsubscribed')",
+            name='chk_voc_email_log_type'),
+        Index('idx_voc_email_log_campaign', 'campaign_id'),
+    )
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -4152,6 +4169,476 @@ def voc_update_account(
     acc.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"id": acc.id, "company_name": acc.company_name, "rag_status": acc.rag_status}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VoC Intelligence Platform — Phase 2 API Endpoints
+#  Survey Builder · Campaign Builder · Public Survey Page
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── Survey CRUD ─────────────────────────────────────────────────────────────
+
+@router.get('/voc/surveys')
+def voc_list_surveys(
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    surveys = (
+        db.query(VocSurveyDB)
+        .filter(VocSurveyDB.deleted_at == None)
+        .order_by(VocSurveyDB.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id":                s.id,
+            "survey_type":       s.survey_type,
+            "title":             s.title,
+            "main_question":     s.main_question,
+            "followup_question": s.followup_question,
+            "practice":          s.practice,
+            "thank_you_msg":     s.thank_you_msg,
+            "version":           s.version,
+            "created_at":        s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in surveys
+    ]
+
+
+class VocSurveyCreateReq(BaseModel):
+    survey_type:       str
+    title:             str
+    main_question:     str
+    followup_question: Optional[str] = None
+    practice:          Optional[str] = None
+    thank_you_msg:     Optional[str] = None
+
+
+@router.post('/voc/surveys', status_code=201)
+def voc_create_survey(
+    body: VocSurveyCreateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    allowed_types = ('nps', 'csat', 'ces', 'combined')
+    if body.survey_type not in allowed_types:
+        raise HTTPException(400, f"survey_type must be one of {allowed_types}")
+    survey = VocSurveyDB(
+        survey_type=body.survey_type,
+        title=body.title,
+        main_question=body.main_question,
+        followup_question=body.followup_question,
+        practice=body.practice,
+        thank_you_msg=body.thank_you_msg or "Thank you for your valuable feedback!",
+        created_by=current_user.id,
+    )
+    db.add(survey)
+    db.commit()
+    db.refresh(survey)
+    logging.info(f"[voc] Survey created: {survey.id} by {current_user.email}")
+    return {"id": survey.id, "title": survey.title, "version": survey.version, "survey_type": survey.survey_type}
+
+
+@router.get('/voc/surveys/{survey_id}')
+def voc_get_survey(
+    survey_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    s = db.query(VocSurveyDB).filter(VocSurveyDB.id == survey_id, VocSurveyDB.deleted_at == None).first()
+    if not s:
+        raise HTTPException(404, "Survey not found")
+    return {
+        "id": s.id, "survey_type": s.survey_type, "title": s.title,
+        "main_question": s.main_question, "followup_question": s.followup_question,
+        "practice": s.practice, "thank_you_msg": s.thank_you_msg, "version": s.version,
+    }
+
+
+class VocSurveyUpdateReq(BaseModel):
+    title:             Optional[str] = None
+    main_question:     Optional[str] = None
+    followup_question: Optional[str] = None
+    practice:          Optional[str] = None
+    thank_you_msg:     Optional[str] = None
+
+
+@router.put('/voc/surveys/{survey_id}')
+def voc_update_survey(
+    survey_id: str,
+    body: VocSurveyUpdateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    s = db.query(VocSurveyDB).filter(VocSurveyDB.id == survey_id, VocSurveyDB.deleted_at == None).first()
+    if not s:
+        raise HTTPException(404, "Survey not found")
+    if body.title             is not None: s.title             = body.title
+    if body.main_question     is not None: s.main_question     = body.main_question
+    if body.followup_question is not None: s.followup_question = body.followup_question
+    if body.practice          is not None: s.practice          = body.practice
+    if body.thank_you_msg     is not None: s.thank_you_msg     = body.thank_you_msg
+    s.version    += 1
+    s.updated_at  = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": s.id, "version": s.version}
+
+
+# ─── Campaign CRUD ────────────────────────────────────────────────────────────
+
+@router.get('/voc/campaigns')
+def voc_list_campaigns(
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    campaigns = db.query(VocCampaignDB).order_by(VocCampaignDB.created_at.desc()).all()
+    account_map = {a.id: a.company_name  for a in db.query(VocAccountDB).filter(VocAccountDB.deleted_at == None).all()}
+    survey_map  = {s.id: s.title         for s in db.query(VocSurveyDB).filter(VocSurveyDB.deleted_at == None).all()}
+    return [
+        {
+            "id":             c.id,
+            "name":           c.name,
+            "survey_id":      c.survey_id,
+            "survey_title":   survey_map.get(c.survey_id, ""),
+            "account_id":     c.account_id,
+            "account_name":   account_map.get(c.account_id, ""),
+            "status":         c.status,
+            "sent_count":     c.sent_count,
+            "open_count":     c.open_count,
+            "click_count":    c.click_count,
+            "response_count": c.response_count,
+            "send_at":        c.send_at.isoformat() if c.send_at else None,
+            "created_at":     c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in campaigns
+    ]
+
+
+class VocCampaignCreateReq(BaseModel):
+    name:       str
+    survey_id:  str
+    account_id: str
+    subject:    Optional[str] = None
+    body_html:  Optional[str] = None
+    send_at:    Optional[str] = None   # ISO datetime string or None for send-now
+
+
+@router.post('/voc/campaigns', status_code=201)
+def voc_create_campaign(
+    body: VocCampaignCreateReq,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    # Validate references
+    if not db.query(VocSurveyDB).filter(VocSurveyDB.id == body.survey_id).first():
+        raise HTTPException(400, "Survey not found")
+    acc = db.query(VocAccountDB).filter(VocAccountDB.id == body.account_id, VocAccountDB.deleted_at == None).first()
+    if not acc:
+        raise HTTPException(400, "Account not found")
+
+    send_at = None
+    if body.send_at:
+        try:
+            from dateutil import parser as dtparser
+            send_at = dtparser.isoparse(body.send_at)
+        except Exception:
+            raise HTTPException(400, "Invalid send_at datetime format (use ISO 8601)")
+
+    camp = VocCampaignDB(
+        name=body.name,
+        survey_id=body.survey_id,
+        account_id=body.account_id,
+        subject=body.subject or f"HSI Customer Satisfaction Survey — {acc.company_name}",
+        body_html=body.body_html,
+        status='draft',
+        send_at=send_at,
+        created_by=current_user.id,
+    )
+    db.add(camp)
+    db.commit()
+    db.refresh(camp)
+    return {"id": camp.id, "name": camp.name, "status": camp.status}
+
+
+@router.get('/voc/campaigns/{campaign_id}/stats')
+def voc_campaign_stats(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    camp = db.query(VocCampaignDB).filter(VocCampaignDB.id == campaign_id).first()
+    if not camp:
+        raise HTTPException(404, "Campaign not found")
+    total_tokens = db.query(VocSurveyTokenDB).filter(VocSurveyTokenDB.campaign_id == campaign_id).count()
+    used_tokens  = db.query(VocSurveyTokenDB).filter(VocSurveyTokenDB.campaign_id == campaign_id, VocSurveyTokenDB.used == True).count()
+    return {
+        "id":             camp.id,
+        "name":           camp.name,
+        "status":         camp.status,
+        "sent_count":     camp.sent_count,
+        "open_count":     camp.open_count,
+        "click_count":    camp.click_count,
+        "response_count": used_tokens,
+        "total_tokens":   total_tokens,
+        "open_rate":      round(camp.open_count  / max(camp.sent_count, 1) * 100, 1),
+        "click_rate":     round(camp.click_count / max(camp.sent_count, 1) * 100, 1),
+        "response_rate":  round(used_tokens      / max(total_tokens, 1)   * 100, 1),
+    }
+
+
+class VocCampaignSendReq(BaseModel):
+    recipients: List[str]   # list of email addresses
+
+
+@router.post('/voc/campaigns/{campaign_id}/send')
+def voc_campaign_send(
+    campaign_id: str,
+    body: VocCampaignSendReq,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(require_role('admin', 'super_admin', 'manager')),
+):
+    """Generate single-use survey tokens and (if SES configured) send emails.
+    Returns survey links for copy-paste / testing when SES is not configured."""
+    import secrets as _sec
+
+    camp = db.query(VocCampaignDB).filter(VocCampaignDB.id == campaign_id).first()
+    if not camp:
+        raise HTTPException(404, "Campaign not found")
+    if camp.status == 'closed':
+        raise HTTPException(400, "Campaign is already closed")
+
+    survey = db.query(VocSurveyDB).filter(VocSurveyDB.id == camp.survey_id).first()
+    if not survey:
+        raise HTTPException(400, "No survey linked to this campaign")
+
+    # Determine base URL for survey link
+    base_url = str(request.base_url).rstrip('/')
+    # Use FRONTEND_URL env var if available, else derive from request
+    frontend_base = os.environ.get('FRONTEND_URL', base_url.replace(':8001', ''))
+
+    tokens_created = []
+    emails_sent    = []
+    ses_ok         = ses_is_configured()
+    expires_at     = datetime.now(timezone.utc) + timedelta(hours=72)
+
+    for email in body.recipients:
+        email = email.strip().lower()
+        if not email:
+            continue
+        tok_str = _sec.token_urlsafe(32)
+        tok = VocSurveyTokenDB(
+            token=tok_str,
+            campaign_id=camp.id,
+            account_id=camp.account_id,
+            respondent_email=email,
+            expires_at=expires_at,
+        )
+        db.add(tok)
+        db.flush()
+
+        survey_url = f"{frontend_base}/s/{tok_str}"
+        tokens_created.append({"email": email, "url": survey_url, "token": tok_str})
+
+        # Email body with personalisation
+        html_body = (camp.body_html or _voc_default_email_html(
+            recipient_email=email,
+            account_name=db.query(VocAccountDB).filter(VocAccountDB.id == camp.account_id).first().company_name if camp.account_id else "Valued Customer",
+            survey_url=survey_url,
+            survey_title=survey.title,
+        ))
+
+        if ses_ok:
+            try:
+                from services.email import _is_configured, send_otp
+                import boto3 as _boto3
+                _client = _boto3.client('ses', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+                _client.send_email(
+                    Source=f"{os.environ.get('SES_SENDER_NAME','HSI')} <{os.environ.get('SES_SENDER_EMAIL','noreply@hitachi-systems.com')}>",
+                    Destination={"ToAddresses": [email]},
+                    Message={
+                        "Subject": {"Data": camp.subject or "HSI Customer Satisfaction Survey"},
+                        "Body": {"Html": {"Data": html_body}},
+                    },
+                )
+                emails_sent.append(email)
+                db.add(VocEmailLogDB(campaign_id=camp.id, recipient_email=email, event_type='sent'))
+            except Exception as _e:
+                logging.error(f"[voc-email] SES send failed for {email}: {_e}")
+        else:
+            logging.info(f"[voc-email][DEV] Survey URL for {email}: {survey_url}")
+            db.add(VocEmailLogDB(campaign_id=camp.id, recipient_email=email, event_type='sent'))
+
+    # Update campaign counters
+    camp.sent_count     += len(tokens_created)
+    camp.status          = 'active'
+    camp.updated_at      = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "sent":       len(tokens_created),
+        "ses_active": ses_ok,
+        "links":      tokens_created,
+        "message":    (
+            f"Emails sent via AWS SES to {len(emails_sent)} recipients."
+            if ses_ok
+            else f"SES not configured — {len(tokens_created)} survey link(s) generated for testing."
+        ),
+    }
+
+
+def _voc_default_email_html(recipient_email: str, account_name: str, survey_url: str, survey_title: str) -> str:
+    return f"""<!doctype html>
+<html><body style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;padding:24px;margin:0">
+<div style="max-width:580px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07)">
+  <div style="background:#CC0000;padding:24px 32px">
+    <div style="color:#fff;font-size:14px;font-weight:bold;letter-spacing:2px">HITACHI SYSTEMS INDIA</div>
+    <div style="color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:1px;margin-top:2px">VOICE OF CUSTOMER</div>
+  </div>
+  <div style="padding:32px">
+    <h2 style="color:#0F172A;font-size:22px;font-weight:700;margin:0 0 12px 0">Your Opinion Matters</h2>
+    <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px 0">
+      We'd love to hear about your experience working with Hitachi Systems India for <strong>{account_name}</strong>.
+      Your feedback helps us serve you better and takes less than 2 minutes to complete.
+    </p>
+    <a href="{survey_url}" style="display:inline-block;background:#CC0000;color:#fff;font-size:14px;font-weight:700;letter-spacing:1px;padding:14px 32px;border-radius:8px;text-decoration:none;text-transform:uppercase">
+      Share Feedback
+    </a>
+    <p style="color:#94A3B8;font-size:11px;margin:24px 0 0 0">
+      This is a personalised, single-use survey link. It expires in 72 hours.
+    </p>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0">
+    <p style="color:#94A3B8;font-size:11px;margin:0">
+      © Hitachi Systems India · If you'd prefer not to receive survey invitations, 
+      <a href="#" style="color:#CC0000">unsubscribe here</a>.
+    </p>
+  </div>
+</div>
+</body></html>"""
+
+
+# ─── Public Survey Page (NO AUTH) ────────────────────────────────────────────
+
+@router.get('/voc/public/survey/{token}')
+def voc_public_get_survey(token: str, db: Session = Depends(get_db)):
+    """Public endpoint — validate token and return survey questions."""
+    tok = db.query(VocSurveyTokenDB).filter(VocSurveyTokenDB.token == token).first()
+    if not tok:
+        raise HTTPException(404, "Survey link not found or expired")
+    if tok.used:
+        raise HTTPException(410, "This survey has already been completed. Thank you!")
+    if tok.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(410, "This survey link has expired")
+
+    camp = db.query(VocCampaignDB).filter(VocCampaignDB.id == tok.campaign_id).first()
+    if not camp:
+        raise HTTPException(404, "Campaign not found")
+    survey = db.query(VocSurveyDB).filter(VocSurveyDB.id == camp.survey_id).first()
+    if not survey:
+        raise HTTPException(404, "Survey not found")
+    acc = db.query(VocAccountDB).filter(VocAccountDB.id == tok.account_id).first()
+
+    return {
+        "token":            tok.token,
+        "survey_type":      survey.survey_type,
+        "title":            survey.title,
+        "main_question":    survey.main_question,
+        "followup_question": survey.followup_question,
+        "thank_you_msg":    survey.thank_you_msg,
+        "account_name":     acc.company_name if acc else "",
+        "campaign_name":    camp.name,
+        "expires_at":       tok.expires_at.isoformat(),
+    }
+
+
+class VocPublicSubmitReq(BaseModel):
+    nps_score:   Optional[int] = None   # 0–10
+    csat_score:  Optional[int] = None   # 1–5
+    ces_score:   Optional[int] = None   # 1–7
+    verbatim:    Optional[str] = None
+
+
+@router.post('/voc/public/survey/{token}')
+def voc_public_submit_survey(token: str, body: VocPublicSubmitReq, db: Session = Depends(get_db)):
+    """Public endpoint — submit survey response. Single-use token."""
+    tok = db.query(VocSurveyTokenDB).filter(VocSurveyTokenDB.token == token).first()
+    if not tok:
+        raise HTTPException(404, "Survey link not found")
+    if tok.used:
+        raise HTTPException(410, "This survey link has already been used")
+    if tok.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(410, "This survey link has expired")
+
+    # Validate scores
+    if body.nps_score is not None and not (0 <= body.nps_score <= 10):
+        raise HTTPException(400, "nps_score must be 0–10")
+    if body.csat_score is not None and not (1 <= body.csat_score <= 5):
+        raise HTTPException(400, "csat_score must be 1–5")
+    if body.ces_score is not None and not (1 <= body.ces_score <= 7):
+        raise HTTPException(400, "ces_score must be 1–7")
+
+    # Determine sentiment from NPS
+    sentiment = None
+    if body.nps_score is not None:
+        if body.nps_score >= 9:   sentiment = 'promoter'
+        elif body.nps_score >= 7: sentiment = 'passive'
+        else:                     sentiment = 'detractor'
+    elif body.csat_score is not None:
+        sentiment = 'promoter' if body.csat_score >= 4 else 'detractor'
+
+    camp = db.query(VocCampaignDB).filter(VocCampaignDB.id == tok.campaign_id).first()
+
+    resp = VocResponseDB(
+        campaign_id=tok.campaign_id,
+        account_id=tok.account_id,
+        token_id=tok.id,
+        respondent_email=tok.respondent_email,
+        nps_score=body.nps_score,
+        csat_score=body.csat_score,
+        ces_score=body.ces_score,
+        verbatim=body.verbatim,
+        sentiment=sentiment,
+    )
+    db.add(resp)
+
+    # Mark token used
+    tok.used    = True
+    tok.used_at = datetime.now(timezone.utc)
+
+    # Update campaign response_count
+    if camp:
+        camp.response_count += 1
+        camp.updated_at = datetime.now(timezone.utc)
+
+    # Update account NPS / CSAT cache
+    if tok.account_id:
+        acc = db.query(VocAccountDB).filter(VocAccountDB.id == tok.account_id).first()
+        if acc:
+            # Recompute latest NPS from all responses for this account
+            all_resps = db.query(VocResponseDB).filter(VocResponseDB.account_id == tok.account_id).all()
+            nps_r = [r for r in all_resps if r.nps_score is not None]
+            if nps_r:
+                prom = sum(1 for r in nps_r if r.nps_score >= 9)
+                detr = sum(1 for r in nps_r if r.nps_score <= 6)
+                acc.latest_nps = round((prom - detr) / len(nps_r) * 100)
+            csat_r = [r for r in all_resps if r.csat_score is not None]
+            if csat_r:
+                sat = sum(1 for r in csat_r if r.csat_score >= 4)
+                acc.latest_csat = round(sat / len(csat_r) * 100, 2)
+            acc.total_responses  = len(all_resps) + 1
+            # RAG auto-compute
+            nps_val = acc.latest_nps or 0
+            acc.rag_status = 'green' if nps_val >= 50 else 'amber' if nps_val >= 20 else 'red'
+            acc.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    survey = db.query(VocSurveyDB).filter(VocSurveyDB.id == camp.survey_id).first() if camp else None
+    return {
+        "success":       True,
+        "response_id":   resp.id,
+        "thank_you_msg": survey.thank_you_msg if survey else "Thank you for your feedback!",
+    }
 
 
 # ── Mount & Middleware ────────────────────────────────────────────────────────

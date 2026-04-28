@@ -20,6 +20,7 @@ import MyActivityPage from "./pages/MyActivityPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 import AdminConsolePage from "./pages/AdminConsolePage";
+import SurveyResponsePage from "./pages/SurveyResponsePage";
 
 const ProtectedRoute = ({ children, requiredRoles }) => {
   const { user, loading } = useAuth();
@@ -73,6 +74,8 @@ function App() {
           <Route path="/admin/approvals" element={<ProtectedRoute requiredRoles={["admin", "super_admin", "manager"]}><AdminApprovalsPage /></ProtectedRoute>} />
           {/* Full Admin Console (light theme) */}
           <Route path="/admin/console" element={<ProtectedRoute requiredRoles={["admin", "super_admin"]}><AdminConsolePage /></ProtectedRoute>} />
+          {/* VoC Public Survey Page — NO AUTH REQUIRED */}
+          <Route path="/s/:token" element={<SurveyResponsePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </div>

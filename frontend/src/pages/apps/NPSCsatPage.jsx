@@ -9,6 +9,8 @@ import {
 // Lazy-load tab components for code splitting
 const DashboardTab   = lazy(() => import("./voc/DashboardTab"));
 const AccountsTab    = lazy(() => import("./voc/AccountsTab"));
+const SurveyBuilderTab = lazy(() => import("./voc/SurveyBuilderTab"));
+const CampaignsTab   = lazy(() => import("./voc/CampaignsTab"));
 
 // Placeholder for future tabs
 const ComingSoon = ({ tab }) => (
@@ -51,6 +53,18 @@ export default function NPSCsatPage() {
         return (
           <Suspense fallback={<TabLoader />}>
             <DashboardTab />
+          </Suspense>
+        );
+      case "SURVEY BUILDER":
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <SurveyBuilderTab />
+          </Suspense>
+        );
+      case "EMAIL CAMPAIGNS":
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <CampaignsTab />
           </Suspense>
         );
       case "ACCOUNTS":

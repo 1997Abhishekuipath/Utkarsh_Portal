@@ -313,11 +313,45 @@ frontend:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: Role-based access control working correctly. Employee users are properly blocked from accessing /admin routes (redirected to home). Admin users can access all admin pages. Non-existent routes redirect appropriately (404 handling)."
+  
+  - task: "Admin Console Page (/admin/console) — Light theme verification"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/AdminConsolePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ TESTED: Admin Console page at /admin/console displays with LIGHT/WHITE theme correctly.
+          
+          **Theme Verification Results:**
+          - ✅ Main background: rgb(241, 245, 249) = #F1F5F9 (light gray) - CORRECT
+          - ✅ Sidebar background: rgb(255, 255, 255) = white - CORRECT
+          - ✅ Sidebar nav text: rgb(100, 116, 139) = #64748B (light gray) - CORRECT
+          - ✅ HITACHI brand text: rgb(204, 0, 0) = #CC0000 (red) - CORRECT
+          - ✅ PUBLISH ALL button: rgb(204, 0, 0) = #CC0000 (red background, white text) - CORRECT
+          - ✅ Stat cards: white backgrounds (rgb(255, 255, 255)) with light borders rgb(226, 232, 240) = #E2E8F0 - CORRECT
+          - ✅ Text colors: Dark text rgb(15, 23, 42) = #0F172A (NOT white) - CORRECT
+          - ✅ No dark theme classes detected (hasDarkClass: False, isDarkBg: False)
+          
+          **Page Features Verified:**
+          - Dashboard with 5 stat cards (Active Users, EDM Slides, Icons/Apps, Auto-Triggers, Engagement)
+          - Left sidebar with white background and navigation sections (Overview, Content-Home, Pillars & Icons, Engagement)
+          - Red "PUBLISH ALL" button at bottom of sidebar
+          - Top bar with "Publish All Changes" button (red)
+          - All cards have white backgrounds with subtle shadows
+          - Platform Activity section with colored progress bars
+          - Pending Approvals and Recent Notifications sections
+          
+          **Minor Note:** Comment in App.js line 74 says "dark CMS" but implementation is correctly light theme (comment only, not code issue).
 
 metadata:
   created_by: "main_agent"
-  version: "3.0"
-  test_sequence: 3
+  version: "3.1"
+  test_sequence: 4
   run_ui: false
 
 test_plan:
@@ -375,3 +409,26 @@ agent_communication:
       - Notification bell and user menu dropdowns function properly
       
       **NO CRITICAL BUGS FOUND** — Platform is stable and ready for production use.
+  
+  - agent: "testing"
+    message: |
+      ✅ ADMIN CONSOLE THEME VERIFICATION COMPLETED
+      
+      **Test Request:** Verify /admin/console displays with LIGHT/WHITE theme (not dark)
+      
+      **Result:** PASS - Theme is correctly implemented as LIGHT/WHITE
+      
+      **Verified Elements:**
+      - Background: Light gray (#F1F5F9) ✓
+      - Sidebar: White with light gray text ✓
+      - HITACHI brand: Red (#CC0000) ✓
+      - PUBLISH ALL button: Red (#CC0000) ✓
+      - Cards: White with light borders (#E2E8F0) ✓
+      - Text: Dark (#0F172A), not white ✓
+      - No dark theme classes detected ✓
+      
+      **Screenshots captured:**
+      - Full page screenshot showing entire admin console
+      - All visual elements match light theme specification
+      
+      **Minor Note:** App.js line 74 comment says "dark CMS" but code correctly implements light theme.

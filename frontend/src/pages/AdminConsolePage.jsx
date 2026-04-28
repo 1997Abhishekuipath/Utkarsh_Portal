@@ -28,18 +28,18 @@ function Toast({ msg, ok }) {
   return (
     <div className={cls(
       "fixed bottom-6 left-1/2 -translate-x-1/2 z-[999] px-5 py-2.5 rounded-xl text-sm font-semibold shadow-2xl animate-fade-in",
-      ok ? "bg-[#1A8A4A] text-white" : "bg-[#C8281E] text-white"
+      ok ? "bg-[#1A8A4A] text-white" : "bg-[#CC0000] text-white"
     )}>{msg}</div>
   );
 }
 
 /* ─── Stat card ─── */
-function StatCard({ emoji, value, label, delta, deltaColor = "#4ADF8A" }) {
+function StatCard({ emoji, value, label, delta, deltaColor = "#1A8A4A" }) {
   return (
-    <div className="bg-[#161010] border border-[#2A1C1E] rounded-xl p-4 flex flex-col gap-1">
+    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col gap-1 shadow-sm">
       <div className="text-2xl mb-1">{emoji}</div>
-      <div className="font-['Barlow_Condensed',sans-serif] text-3xl font-extrabold text-white tracking-tight">{value}</div>
-      <div className="text-[#8A8080] text-[11px] font-semibold tracking-wider uppercase">{label}</div>
+      <div className="font-['Barlow_Condensed',sans-serif] text-3xl font-extrabold text-[#0F172A] tracking-tight">{value}</div>
+      <div className="text-[#64748B] text-[11px] font-semibold tracking-wider uppercase">{label}</div>
       {delta && <div className="text-[11px] font-bold mt-0.5" style={{ color: deltaColor }}>{delta}</div>}
     </div>
   );
@@ -48,15 +48,15 @@ function StatCard({ emoji, value, label, delta, deltaColor = "#4ADF8A" }) {
 /* ─── Card wrapper ─── */
 function Card({ children, className = "" }) {
   return (
-    <div className={cls("bg-[#161010] border border-[#2A1C1E] rounded-xl overflow-hidden", className)}>
+    <div className={cls("bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm", className)}>
       {children}
     </div>
   );
 }
 function CardTop({ title, right }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-[#2A1C1E]">
-      <div className="text-[13px] font-bold text-white">{title}</div>
+    <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
+      <div className="text-[13px] font-bold text-[#0F172A]">{title}</div>
       {right && <div>{right}</div>}
     </div>
   );
@@ -66,14 +66,14 @@ function CardBody({ children, className = "" }) {
 }
 
 /* ─── Bar chart row ─── */
-function BarRow({ label, pct, color = "#C8281E" }) {
+function BarRow({ label, pct, color = "#CC0000" }) {
   return (
     <div className="flex items-center gap-3 mb-3">
-      <div className="text-[11px] text-[#C0B8B8] w-32 flex-shrink-0">{label}</div>
-      <div className="flex-1 bg-[#2A1C1E] rounded-full h-2">
+      <div className="text-[11px] text-[#475569] w-32 flex-shrink-0">{label}</div>
+      <div className="flex-1 bg-[#F1F5F9] rounded-full h-2">
         <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <div className="text-[11px] font-bold text-white w-8 text-right">{pct}%</div>
+      <div className="text-[11px] font-bold text-[#0F172A] w-8 text-right">{pct}%</div>
     </div>
   );
 }
@@ -83,10 +83,10 @@ function Btn({ children, onClick, variant = "ghost", size = "sm", className = ""
   const base = "inline-flex items-center gap-1.5 font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50";
   const sizes = { sm: "text-[11px] px-2.5 py-1", md: "text-xs px-4 py-2", lg: "text-sm px-5 py-2.5" };
   const variants = {
-    ghost: "bg-transparent border border-[#4A4040] text-[#C0B8B8] hover:border-[#C0B8B8] hover:text-white",
-    red: "bg-[#C8281E] text-white hover:bg-[#9B1A12] border border-transparent",
+    ghost: "bg-transparent border border-[#E2E8F0] text-[#475569] hover:border-[#CC0000]/40 hover:text-[#CC0000]",
+    red: "bg-[#CC0000] text-white hover:bg-[#AA0000] border border-transparent",
     green: "bg-[#1A8A4A] text-white hover:bg-[#137038] border border-transparent",
-    danger: "bg-transparent border border-[#C8281E] text-[#E8453A] hover:bg-[#C8281E] hover:text-white",
+    danger: "bg-transparent border border-red-200 text-red-500 hover:bg-red-500 hover:text-white",
   };
   return <button type={type} data-testid={testId} onClick={onClick} disabled={disabled} className={cls(base, sizes[size], variants[variant], className)}>{children}</button>;
 }
@@ -95,12 +95,12 @@ function Btn({ children, onClick, variant = "ghost", size = "sm", className = ""
 function Inp({ label, children }) {
   return (
     <div className="mb-3">
-      {label && <div className="text-[9px] font-extrabold tracking-widest text-[#8A8080] mb-1.5">{label}</div>}
+      {label && <div className="text-[9px] font-extrabold tracking-widest text-[#64748B] mb-1.5">{label}</div>}
       {children}
     </div>
   );
 }
-const inputCls = "w-full bg-[#201618] border border-[#4A4040] text-white text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-[#C8281E] placeholder:text-[#4A4040]";
+const inputCls = "w-full bg-white border border-[#E2E8F0] text-[#0F172A] text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-[#CC0000] focus:ring-1 focus:ring-[#CC0000]/20 placeholder:text-[#94A3B8]";
 
 /* ─── Sidebar nav item ─── */
 function NavItem({ icon: Icon, label, active, badge, onClick }) {
@@ -110,12 +110,14 @@ function NavItem({ icon: Icon, label, active, badge, onClick }) {
       data-testid={`nav-${id}`}
       className={cls(
         "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all text-[12px] font-semibold",
-        active ? "bg-[#C8281E] text-white" : "text-[#8A8080] hover:text-white hover:bg-[#201618]"
+        active
+          ? "bg-[#CC0000] text-white shadow-sm"
+          : "text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9]"
       )}>
       <Icon size={14} className="flex-shrink-0" />
       <span className="flex-1">{label}</span>
       {badge > 0 && (
-        <span className="bg-[#C8281E] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+        <span className="bg-[#CC0000] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
           {badge > 9 ? "9+" : badge}
         </span>
       )}
@@ -123,7 +125,7 @@ function NavItem({ icon: Icon, label, active, badge, onClick }) {
   );
 }
 function NavSection({ label }) {
-  return <div className="text-[9px] font-black tracking-widest text-[#4A4040] px-3 pt-4 pb-1.5 uppercase">{label}</div>;
+  return <div className="text-[9px] font-black tracking-widest text-[#94A3B8] px-3 pt-4 pb-1.5 uppercase">{label}</div>;
 }
 
 /* ═══════════════════════ PAGES ═══════════════════════ */
@@ -151,8 +153,8 @@ function DashboardPage({ authHeader, onNav, stats }) {
       {/* Stats row */}
       <div className="grid grid-cols-5 gap-3 mb-4">
         <StatCard emoji="👥" value={stats.total || 0} label="Active Users" delta={`↑ ${stats.thisWeek || 0} this week`} />
-        <StatCard emoji="📢" value={stats.edmSlides || 8} label="EDM Slides" delta="Home carousel" deltaColor="#8A8080" />
-        <StatCard emoji="🔧" value={stats.icons || 46} label="Icons / Apps" delta="Across 4 pillars" deltaColor="#8A8080" />
+        <StatCard emoji="📢" value={stats.edmSlides || 8} label="EDM Slides" delta="Home carousel" deltaColor="#64748B" />
+        <StatCard emoji="🔧" value={stats.icons || 46} label="Icons / Apps" delta="Across 4 pillars" deltaColor="#64748B" />
         <StatCard emoji="🔔" value={7} label="Auto-Triggers" delta="All active" />
         <StatCard emoji="📈" value={activity?.engagement_pct ? `${activity.engagement_pct}%` : "87%"} label="Engagement" delta="↑ 14pts QoQ" />
       </div>
@@ -164,16 +166,16 @@ function DashboardPage({ authHeader, onNav, stats }) {
             right={<Btn onClick={() => onNav("users")}>View all →</Btn>} />
           <CardBody>
             {pending.length === 0 ? (
-              <div className="text-center py-6 text-[#4A4040] text-xs">No pending approvals</div>
+              <div className="text-center py-6 text-[#94A3B8] text-xs">No pending approvals</div>
             ) : pending.map(u => (
-              <div key={u.id} className="flex items-center gap-2.5 p-2.5 bg-[#201618] rounded-lg mb-2">
+              <div key={u.id} className="flex items-center gap-2.5 p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg mb-2">
                 <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-black text-white"
-                  style={{ background: u.avatar_url ? `url(${u.avatar_url}) center/cover` : "#1A4A9A" }}>
+                  style={{ background: u.avatar_url ? `url(${u.avatar_url}) center/cover` : "#CC0000" }}>
                   {u.name?.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold text-white truncate">{u.name}</div>
-                  <div className="text-[10px] text-[#8A8080]">{u.department || u.email}</div>
+                  <div className="text-[12px] font-bold text-[#0F172A] truncate">{u.name}</div>
+                  <div className="text-[10px] text-[#64748B]">{u.department || u.email}</div>
                 </div>
                 <Btn variant="green" onClick={() => approveUser(u.id)}>Approve</Btn>
               </div>
@@ -188,11 +190,11 @@ function DashboardPage({ authHeader, onNav, stats }) {
           <CardBody>
             <div className="flex flex-col gap-2">
               {notifs.length === 0 ? (
-                <div className="text-center py-6 text-[#4A4040] text-xs">No notifications sent yet</div>
+                <div className="text-center py-6 text-[#94A3B8] text-xs">No notifications sent yet</div>
               ) : notifs.map(n => (
-                <div key={n.id} className="p-2.5 bg-[#201618] rounded-lg">
-                  <div className="text-[12px] font-semibold text-white">{n.title}</div>
-                  <div className="text-[10px] text-[#8A8080] mt-0.5">{ago(n.sent_at)}</div>
+                <div key={n.id} className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+                  <div className="text-[12px] font-semibold text-[#0F172A]">{n.title}</div>
+                  <div className="text-[10px] text-[#64748B] mt-0.5">{ago(n.sent_at)}</div>
                 </div>
               ))}
               {/* static fallbacks */}
@@ -201,9 +203,9 @@ function DashboardPage({ authHeader, onNav, stats }) {
                 { t: "📚 New Best Practice Published", s: "Sent to all · 1d ago · 78% opened" },
                 { t: "🎂 Birthday — Kiran Bhat", s: "Auto-sent · Today · 50 XP credited" },
               ].map((n, i) => (
-                <div key={i} className="p-2.5 bg-[#201618] rounded-lg">
-                  <div className="text-[12px] font-semibold text-white">{n.t}</div>
-                  <div className="text-[10px] text-[#8A8080] mt-0.5">{n.s}</div>
+                <div key={i} className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+                  <div className="text-[12px] font-semibold text-[#0F172A]">{n.t}</div>
+                  <div className="text-[10px] text-[#64748B] mt-0.5">{n.s}</div>
                 </div>
               ))}
             </div>
@@ -217,7 +219,7 @@ function DashboardPage({ authHeader, onNav, stats }) {
           right={<Btn onClick={() => onNav("analytics")}>Full analytics →</Btn>} />
         <CardBody>
           <BarRow label="Employee Pillar" pct={91} color="#1A8A4A" />
-          <BarRow label="Customer Pillar" pct={78} color="#C8281E" />
+          <BarRow label="Customer Pillar" pct={78} color="#CC0000" />
           <BarRow label="Innovator Pillar" pct={64} color="#1A4A9A" />
           <BarRow label="Shareholder Pillar" pct={42} color="#D4A84A" />
           <BarRow label="EDM Click-thru" pct={68} color="#0A8A9A" />
@@ -260,21 +262,26 @@ function UsersPage({ authHeader, onBadge, toast }) {
   };
 
   const RoleChip = ({ role }) => {
-    const colors = { super_admin: "bg-purple-900/60 text-purple-300", admin: "bg-red-900/60 text-red-300", manager: "bg-blue-900/60 text-blue-300", employee: "bg-green-900/60 text-green-300" };
-    return <span className={cls("text-[9px] font-black px-2 py-0.5 rounded-full", colors[role] || "bg-[#201618] text-[#8A8080]")}>{role?.toUpperCase()}</span>;
+    const colors = {
+      super_admin: "bg-purple-100 text-purple-700",
+      admin: "bg-red-100 text-red-700",
+      manager: "bg-blue-100 text-blue-700",
+      employee: "bg-emerald-100 text-emerald-700"
+    };
+    return <span className={cls("text-[9px] font-black px-2 py-0.5 rounded-full", colors[role] || "bg-[#F1F5F9] text-[#64748B]")}>{role?.toUpperCase()}</span>;
   };
 
   const UserRow = ({ u, actions }) => (
-    <div className="flex items-center gap-3 p-2.5 bg-[#201618] rounded-lg mb-2">
-      <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-black text-white" style={{ background: "#1A4A9A" }}>
+    <div className="flex items-center gap-3 p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg mb-2">
+      <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-black text-white" style={{ background: "#CC0000" }}>
         {u.name?.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-bold text-white">{u.name}</span>
+          <span className="text-[13px] font-bold text-[#0F172A]">{u.name}</span>
           <RoleChip role={u.role} />
         </div>
-        <div className="text-[10px] text-[#8A8080]">{u.email} · {u.department || "—"}</div>
+        <div className="text-[10px] text-[#64748B]">{u.email} · {u.department || "—"}</div>
       </div>
       <div className="flex gap-1">{actions(u)}</div>
     </div>
@@ -284,11 +291,11 @@ function UsersPage({ authHeader, onBadge, toast }) {
     <div className="space-y-4">
       <Card>
         <CardTop title="⏳ Pending Approvals"
-          right={<span className="text-[10px] text-[#8A8080]">Domain: @hitachi-systems.com only</span>} />
+          right={<span className="text-[10px] text-[#64748B]">Domain: @hitachi-systems.com only</span>} />
         <CardBody>
-          {loading ? <div className="text-center py-8"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
+          {loading ? <div className="text-center py-8"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
             : pending.length === 0
-            ? <div className="text-center py-8 text-[#4A4040] text-sm">🎉 No pending approvals</div>
+            ? <div className="text-center py-8 text-[#94A3B8] text-sm">🎉 No pending approvals</div>
             : pending.map(u => <UserRow key={u.id} u={u} actions={u => (
                 <>
                   <Btn variant="green" onClick={() => approve(u.id)}>Approve</Btn>
@@ -300,9 +307,9 @@ function UsersPage({ authHeader, onBadge, toast }) {
       </Card>
 
       <Card>
-        <CardTop title="✅ Approved Users" right={<span className="text-[#8A8080] text-xs">{approved.length} total</span>} />
+        <CardTop title="✅ Approved Users" right={<span className="text-[#64748B] text-xs">{approved.length} total</span>} />
         <CardBody className="max-h-[50vh] overflow-y-auto">
-          {loading ? <div className="text-center py-8"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
+          {loading ? <div className="text-center py-8"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
             : approved.map(u => <UserRow key={u.id} u={u} actions={() => null} />)
           }
         </CardBody>
@@ -325,7 +332,7 @@ function HomeEDMPage({ authHeader, toast }) {
   useEffect(() => { load(); }, []);
 
   const add = async () => {
-    const body = { scope: "home", title: "New Slide", subtitle: "", gradient_from: "#C8281E", gradient_to: "#9B1A12", tag: "NEW", tag_color: "#D4A84A", position: slides.length };
+    const body = { scope: "home", title: "New Slide", subtitle: "", gradient_from: "#CC0000", gradient_to: "#9B1A12", tag: "NEW", tag_color: "#D4A84A", position: slides.length };
     await fetch(`${API}/admin/edm-slides`, { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
     toast("Slide added", true); load();
   };
@@ -341,15 +348,15 @@ function HomeEDMPage({ authHeader, toast }) {
     <Card>
       <CardTop title="📢 Home EDM Carousel" right={<Btn variant="red" onClick={add} data-testid="edm-add-slide-btn"><Plus size={12} /> Add Slide</Btn>} />
       <CardBody>
-        <div className="text-[11px] text-[#8A8080] mb-4">Changes publish to both <strong className="text-white">Employee Web</strong> and <strong className="text-white">Mobile App</strong>.</div>
-        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
-          : slides.length === 0 ? <div className="text-center py-12 text-[#4A4040] text-sm">No slides yet — click Add Slide</div>
+        <div className="text-[11px] text-[#64748B] mb-4">Changes publish to both <strong className="text-[#0F172A]">Employee Web</strong> and <strong className="text-[#0F172A]">Mobile App</strong>.</div>
+        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
+          : slides.length === 0 ? <div className="text-center py-12 text-[#94A3B8] text-sm">No slides yet — click Add Slide</div>
           : (
             <div className="space-y-3">
               {slides.map(s => (
-                <div key={s.id} className="border border-[#2A1C1E] rounded-xl overflow-hidden">
+                <div key={s.id} className="border border-[#E2E8F0] rounded-xl overflow-hidden">
                   {/* Preview */}
-                  <div className="p-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${s.gradient_from || "#C8281E"}, ${s.gradient_to || "#9B1A12"})` }}>
+                  <div className="p-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${s.gradient_from || "#CC0000"}, ${s.gradient_to || "#9B1A12"})` }}>
                     <div className="flex-1">
                       <div className="font-['Barlow_Condensed',sans-serif] font-black text-xl text-white">{s.title}</div>
                       <div className="text-white/70 text-xs mt-0.5">{s.subtitle}</div>
@@ -357,41 +364,41 @@ function HomeEDMPage({ authHeader, toast }) {
                     {s.tag && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ background: s.tag_color || "#D4A84A", color: "#000" }}>{s.tag}</span>}
                   </div>
                   {/* Editor */}
-                  <div className="p-3 bg-[#201618] grid grid-cols-2 gap-2" data-testid={`edm-row-${s.id}`}>
+                  <div className="p-3 bg-[#F8FAFC] grid grid-cols-2 gap-2" data-testid={`edm-row-${s.id}`}>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TITLE</div>
+                      <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">TITLE</div>
                       <input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} data-testid={`edm-title-${s.id}`} />
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">SUBTITLE</div>
+                      <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">SUBTITLE</div>
                       <input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} data-testid={`edm-subtitle-${s.id}`} />
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">FROM COLOR</div>
+                      <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">FROM COLOR</div>
                       <div className="flex items-center gap-2">
-                        <input type="color" defaultValue={s.gradient_from || "#C8281E"}
+                        <input type="color" defaultValue={s.gradient_from || "#CC0000"}
                           onChange={e => update(s.id, "gradient_from", e.target.value)}
                           data-testid={`edm-from-color-${s.id}`}
-                          className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+                          className="w-8 h-8 rounded cursor-pointer bg-transparent border border-[#E2E8F0]" />
                         <input defaultValue={s.gradient_from}
                           onBlur={e => update(s.id, "gradient_from", e.target.value)}
                           className={cls(inputCls, "flex-1")} />
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TO COLOR</div>
+                      <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">TO COLOR</div>
                       <div className="flex items-center gap-2">
                         <input type="color" defaultValue={s.gradient_to || "#9B1A12"}
                           onChange={e => update(s.id, "gradient_to", e.target.value)}
                           data-testid={`edm-to-color-${s.id}`}
-                          className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+                          className="w-8 h-8 rounded cursor-pointer bg-transparent border border-[#E2E8F0]" />
                         <input defaultValue={s.gradient_to}
                           onBlur={e => update(s.id, "gradient_to", e.target.value)}
                           className={cls(inputCls, "flex-1")} />
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TAG</div>
+                      <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">TAG</div>
                       <input defaultValue={s.tag} onBlur={e => update(s.id, "tag", e.target.value)} placeholder="e.g. INCENTIVE" className={inputCls} data-testid={`edm-tag-${s.id}`} />
                     </div>
                     <div className="flex items-end justify-end">
@@ -436,14 +443,14 @@ function QuotesPage({ authHeader, toast }) {
     <Card>
       <CardTop title="💡 Motivational Quotes" right={<Btn variant="red" onClick={add} data-testid="quote-add-btn"><Plus size={12} /> Add Quote</Btn>} />
       <CardBody>
-        <div className="text-[11px] text-[#8A8080] mb-4">Quotes rotate every 30 seconds on home screen and profile.</div>
-        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
-          : quotes.length === 0 ? <div className="text-center py-12 text-[#4A4040] text-sm">No quotes yet — click Add Quote</div>
+        <div className="text-[11px] text-[#64748B] mb-4">Quotes rotate every 30 seconds on home screen and profile.</div>
+        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
+          : quotes.length === 0 ? <div className="text-center py-12 text-[#94A3B8] text-sm">No quotes yet — click Add Quote</div>
           : (
             <div className="space-y-2">
               {quotes.map((q) => (
-                <div key={q.id} className="flex items-start gap-3 bg-[#201618] rounded-xl p-3" data-testid={`quote-row-${q.id}`}>
-                  <div className="text-[#4A4040] font-black text-lg leading-none mt-0.5">"{/* */}</div>
+                <div key={q.id} className="flex items-start gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3" data-testid={`quote-row-${q.id}`}>
+                  <div className="text-[#CC0000] font-black text-lg leading-none mt-0.5">"</div>
                   <div className="flex-1 space-y-2">
                     <textarea defaultValue={q.text} onBlur={e => update(q.id, "text", e.target.value)} rows={2} className={cls(inputCls, "resize-none")} placeholder="Quote text…" data-testid={`quote-text-${q.id}`} />
                     <input defaultValue={q.source} onBlur={e => update(q.id, "source", e.target.value)} className={inputCls} placeholder="Source / attribution" data-testid={`quote-source-${q.id}`} />
@@ -480,47 +487,47 @@ function PillarManagerPage({ authHeader, toast }) {
     <Card>
       <CardTop title="🏛️ Pillar Manager" />
       <CardBody>
-        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
+        {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
           : (
             <div className="grid grid-cols-2 gap-4">
               {pillars.map(p => (
-                <div key={p.id} className="bg-[#201618] rounded-xl overflow-hidden border border-[#2A1C1E]" data-testid={`pillar-row-${p.id}`}>
-                  <div className="p-3 flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${p.gradient_from || "#C8281E"}, ${p.gradient_to || "#9B1A12"})` }}>
+                <div key={p.id} className="bg-white rounded-xl overflow-hidden border border-[#E2E8F0] shadow-sm" data-testid={`pillar-row-${p.id}`}>
+                  <div className="p-3 flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${p.gradient_from || "#CC0000"}, ${p.gradient_to || "#9B1A12"})` }}>
                     <span className="text-2xl">{p.icon_name || "🏛️"}</span>
                     <div>
                       <div className="font-['Barlow_Condensed',sans-serif] font-black text-lg text-white">{p.name}</div>
                       <div className="text-white/70 text-xs">{p.tagline}</div>
                     </div>
                   </div>
-                  <div className="p-3 space-y-2">
+                  <div className="p-3 space-y-2 bg-[#F8FAFC]">
                     <div>
-                      <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">TAGLINE</div>
+                      <div className="text-[9px] text-[#64748B] font-bold tracking-widest mb-1">TAGLINE</div>
                       <input defaultValue={p.tagline} onBlur={e => update(p.id, "tagline", e.target.value)} className={inputCls} data-testid={`pillar-tagline-${p.id}`} />
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">DESCRIPTION</div>
+                      <div className="text-[9px] text-[#64748B] font-bold tracking-widest mb-1">DESCRIPTION</div>
                       <input defaultValue={p.description} onBlur={e => update(p.id, "description", e.target.value)} className={inputCls} data-testid={`pillar-description-${p.id}`} />
                     </div>
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">FROM</div>
+                        <div className="text-[9px] text-[#64748B] font-bold tracking-widest mb-1">FROM</div>
                         <div className="flex gap-1">
-                          <input type="color" defaultValue={p.gradient_from || "#C8281E"}
+                          <input type="color" defaultValue={p.gradient_from || "#CC0000"}
                             onChange={e => update(p.id, "gradient_from", e.target.value)}
                             data-testid={`pillar-from-color-${p.id}`}
-                            className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
+                            className="w-7 h-7 rounded border border-[#E2E8F0] bg-transparent cursor-pointer" />
                           <input defaultValue={p.gradient_from}
                             onBlur={e => update(p.id, "gradient_from", e.target.value)}
                             className={cls(inputCls, "flex-1")} />
                         </div>
                       </div>
                       <div className="flex-1">
-                        <div className="text-[9px] text-[#8A8080] font-bold tracking-widest mb-1">TO</div>
+                        <div className="text-[9px] text-[#64748B] font-bold tracking-widest mb-1">TO</div>
                         <div className="flex gap-1">
                           <input type="color" defaultValue={p.gradient_to || "#9B1A12"}
                             onChange={e => update(p.id, "gradient_to", e.target.value)}
                             data-testid={`pillar-to-color-${p.id}`}
-                            className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer" />
+                            className="w-7 h-7 rounded border border-[#E2E8F0] bg-transparent cursor-pointer" />
                           <input defaultValue={p.gradient_to}
                             onBlur={e => update(p.id, "gradient_to", e.target.value)}
                             className={cls(inputCls, "flex-1")} />
@@ -587,7 +594,9 @@ function IconManagerPage({ authHeader, toast }) {
         {pillars.map(p => (
           <button key={p.id} onClick={() => setActivePillar(p.id)}
             className={cls("px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-              p.id === activePillar ? "bg-[#C8281E] text-white" : "bg-[#201618] text-[#8A8080] hover:text-white")}>
+              p.id === activePillar
+                ? "bg-[#CC0000] text-white shadow-sm"
+                : "bg-white border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A] hover:border-[#CC0000]/30")}>
             {p.name}
           </button>
         ))}
@@ -595,12 +604,12 @@ function IconManagerPage({ authHeader, toast }) {
       <Card>
         <CardTop title={`🔧 ${pillarName} — Icons & Apps`} right={<Btn variant="red" onClick={add} data-testid="icon-add-app-btn"><Plus size={12} /> Add App</Btn>} />
         <CardBody>
-          <div className="text-[11px] text-[#8A8080] mb-4">Name · Lucide icon · Route · Badge (HOT/NEW).</div>
-          {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div> : (
+          <div className="text-[11px] text-[#64748B] mb-4">Name · Lucide icon · Route · Badge (HOT/NEW).</div>
+          {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div> : (
             <div className="grid grid-cols-2 gap-2">
               {icons.map(ic => (
-                <div key={ic.id} className="bg-[#201618] rounded-xl p-3 flex items-start gap-2" data-testid={`icon-row-${ic.id}`}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-black" style={{ background: ic.card_color || "#C8281E" }}>
+                <div key={ic.id} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 flex items-start gap-2" data-testid={`icon-row-${ic.id}`}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-black text-white" style={{ background: ic.card_color || "#CC0000" }}>
                     ⬡
                   </div>
                   <div className="flex-1 min-w-0 space-y-1.5">
@@ -612,7 +621,9 @@ function IconManagerPage({ authHeader, toast }) {
                         <button key={b} onClick={() => update(ic.id, "badge", b)}
                           data-testid={`icon-badge-${ic.id}-${b || "none"}`}
                           className={cls("px-2 py-0.5 rounded text-[9px] font-black transition-all",
-                            ic.badge === b ? "bg-[#C8281E] text-white" : "bg-[#2A1C1E] text-[#8A8080] hover:text-white")}>
+                            ic.badge === b
+                              ? "bg-[#CC0000] text-white"
+                              : "bg-white border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]")}>
                           {b || "none"}
                         </button>
                       ))}
@@ -654,7 +665,7 @@ function PillarEDMPage({ authHeader, toast }) {
   }, [activePillar]);
 
   const add = async () => {
-    await fetch(`${API}/admin/edm-slides`, { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify({ scope: activePillar, title: "New Slide", subtitle: "", gradient_from: "#C8281E", gradient_to: "#9B1A12", tag: "NEW", position: slides.length }) });
+    await fetch(`${API}/admin/edm-slides`, { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify({ scope: activePillar, title: "New Slide", subtitle: "", gradient_from: "#CC0000", gradient_to: "#9B1A12", tag: "NEW", position: slides.length }) });
     toast("Slide added", true);
     const d = await fetch(`${API}/admin/edm-slides?scope=${activePillar}`, { headers: authHeader() }).then(r => r.json()).catch(() => []);
     setSlides(Array.isArray(d) ? d : []);
@@ -676,7 +687,9 @@ function PillarEDMPage({ authHeader, toast }) {
         {pillars.map(p => (
           <button key={p.slug} onClick={() => setActivePillar(p.slug)}
             className={cls("px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-              p.slug === activePillar ? "bg-[#C8281E] text-white" : "bg-[#201618] text-[#8A8080] hover:text-white")}>
+              p.slug === activePillar
+                ? "bg-[#CC0000] text-white shadow-sm"
+                : "bg-white border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A] hover:border-[#CC0000]/30")}>
             {p.name}
           </button>
         ))}
@@ -684,20 +697,28 @@ function PillarEDMPage({ authHeader, toast }) {
       <Card>
         <CardTop title={`🗂️ ${pillarName} — EDM Slides`} right={<Btn variant="red" onClick={add} data-testid="pillar-edm-add-btn"><Plus size={12} /> Add Slide</Btn>} />
         <CardBody>
-          {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#C8281E] mx-auto" /></div>
-            : slides.length === 0 ? <div className="text-center py-12 text-[#4A4040] text-sm">No slides for this pillar — click Add Slide</div>
+          {loading ? <div className="text-center py-12"><RefreshCw size={20} className="animate-spin text-[#CC0000] mx-auto" /></div>
+            : slides.length === 0 ? <div className="text-center py-12 text-[#94A3B8] text-sm">No slides for this pillar — click Add Slide</div>
             : (
               <div className="space-y-3">
                 {slides.map(s => (
-                  <div key={s.id} className="border border-[#2A1C1E] rounded-xl overflow-hidden" data-testid={`pedm-row-${s.id}`}>
-                    <div className="p-4" style={{ background: `linear-gradient(135deg, ${s.gradient_from || "#C8281E"}, ${s.gradient_to || "#9B1A12"})` }}>
+                  <div key={s.id} className="border border-[#E2E8F0] rounded-xl overflow-hidden" data-testid={`pedm-row-${s.id}`}>
+                    <div className="p-4" style={{ background: `linear-gradient(135deg, ${s.gradient_from || "#CC0000"}, ${s.gradient_to || "#9B1A12"})` }}>
                       <div className="font-black text-xl text-white">{s.title}</div>
                       <div className="text-white/70 text-xs">{s.subtitle}</div>
                     </div>
-                    <div className="p-3 bg-[#201618] grid grid-cols-2 gap-2">
-                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">TITLE</div><input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} data-testid={`pedm-title-${s.id}`} /></div>
-                      <div><div className="text-[9px] text-[#8A8080] mb-1 font-bold tracking-widest">SUBTITLE</div><input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} data-testid={`pedm-subtitle-${s.id}`} /></div>
-                      <div className="flex items-end justify-end col-span-2"><Btn variant="danger" onClick={() => del(s.id)} data-testid={`pedm-delete-${s.id}`}><Trash2 size={12} /> Delete</Btn></div>
+                    <div className="p-3 bg-[#F8FAFC] grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">TITLE</div>
+                        <input defaultValue={s.title} onBlur={e => update(s.id, "title", e.target.value)} className={inputCls} data-testid={`pedm-title-${s.id}`} />
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-[#64748B] mb-1 font-bold tracking-widest">SUBTITLE</div>
+                        <input defaultValue={s.subtitle} onBlur={e => update(s.id, "subtitle", e.target.value)} className={inputCls} data-testid={`pedm-subtitle-${s.id}`} />
+                      </div>
+                      <div className="flex items-end justify-end col-span-2">
+                        <Btn variant="danger" onClick={() => del(s.id)} data-testid={`pedm-delete-${s.id}`}><Trash2 size={12} /> Delete</Btn>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -786,18 +807,18 @@ function PushPage({ authHeader, toast }) {
         <CardTop title="🤖 Smart Auto-Triggers" />
         <CardBody className="space-y-2">
           {TRIGGERS.map((t, i) => (
-            <div key={t.name} className="flex items-start gap-3 p-2.5 bg-[#201618] rounded-lg">
+            <div key={t.name} className="flex items-start gap-3 p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
               <button onClick={() => setEnabled(e => { const n = [...e]; n[i] = !n[i]; return n; })}
                 className={cls("w-8 h-4 rounded-full relative transition-all flex-shrink-0 mt-0.5",
-                  enabled[i] ? "bg-[#1A8A4A]" : "bg-[#2A1C1E]")}>
+                  enabled[i] ? "bg-[#1A8A4A]" : "bg-[#E2E8F0]")}>
                 <span className={cls("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow", enabled[i] ? "left-4" : "left-0.5")} />
               </button>
               <div>
-                <div className="text-[12px] font-bold text-white">{t.name}</div>
-                <div className="text-[10px] text-[#8A8080] mt-0.5">{t.desc}</div>
+                <div className="text-[12px] font-bold text-[#0F172A]">{t.name}</div>
+                <div className="text-[10px] text-[#64748B] mt-0.5">{t.desc}</div>
               </div>
               <span className={cls("text-[8px] font-black ml-auto px-1.5 py-0.5 rounded-full flex-shrink-0",
-                enabled[i] ? "bg-[#0A2A1A] text-[#4ADF8A]" : "bg-[#2A1C1E] text-[#4A4040]")}>
+                enabled[i] ? "bg-emerald-100 text-emerald-700" : "bg-[#F1F5F9] text-[#94A3B8]")}>
                 {enabled[i] ? "ON" : "OFF"}
               </span>
             </div>
@@ -825,7 +846,7 @@ function AnalyticsPage({ authHeader }) {
         <CardTop title="📊 Pillar Engagement" />
         <CardBody>
           <BarRow label="Employee" pct={summary?.employee_engagement ?? 91} color="#1A8A4A" />
-          <BarRow label="Customer" pct={summary?.customer_engagement ?? 78} color="#C8281E" />
+          <BarRow label="Customer" pct={summary?.customer_engagement ?? 78} color="#CC0000" />
           <BarRow label="Innovator" pct={summary?.innovator_engagement ?? 64} color="#1A4A9A" />
           <BarRow label="Shareholder" pct={summary?.shareholder_engagement ?? 42} color="#D4A84A" />
         </CardBody>
@@ -856,12 +877,12 @@ function AnalyticsPage({ authHeader }) {
             { v: "v2.17", note: "Added Wellbeing Week notification trigger", t: "Yesterday", by: "Admin" },
             { v: "v2.16", note: "New BCG motivational quote added", t: "2d ago", by: "Admin" },
           ].map((h, i) => (
-            <div key={i} className="p-2.5 bg-[#201618] rounded-lg">
+            <div key={i} className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-['Barlow_Condensed',sans-serif] font-black text-[#E8453A]">{h.v}</span>
-                <span className="text-[10px] text-[#8A8080]">{h.t} · by {h.by}</span>
+                <span className="font-['Barlow_Condensed',sans-serif] font-black text-[#CC0000]">{h.v}</span>
+                <span className="text-[10px] text-[#64748B]">{h.t} · by {h.by}</span>
               </div>
-              <div className="text-[11px] text-[#C0B8B8]">{h.note}</div>
+              <div className="text-[11px] text-[#475569]">{h.note}</div>
             </div>
           ))}
         </CardBody>
@@ -889,7 +910,6 @@ export default function AdminConsolePage() {
 
   useEffect(() => {
     const h = authHeader();
-    // load stats
     fetch(`${API}/admin/users`, { headers: h }).then(r => r.json()).then(d => {
       const arr = Array.isArray(d) ? d : (d?.items || []);
       setStats(s => ({ ...s, total: arr.length }));
@@ -933,15 +953,15 @@ export default function AdminConsolePage() {
   };
 
   return (
-    <div className="flex h-screen bg-[#060404] text-white overflow-hidden" style={{ fontFamily: "'Barlow', sans-serif" }}>
+    <div className="flex h-screen bg-[#F1F5F9] overflow-hidden" style={{ fontFamily: "'Barlow', sans-serif" }}>
       <Toast msg={toast.msg} ok={toast.ok} />
 
       {/* ── SIDEBAR ── */}
-      <div className="w-[240px] flex-shrink-0 bg-[#0C0808] border-r border-[#2A1C1E] flex flex-col h-full">
+      <div className="w-[240px] flex-shrink-0 bg-white border-r border-[#E2E8F0] flex flex-col h-full shadow-sm">
         {/* Brand */}
-        <div className="px-4 py-4 border-b border-[#2A1C1E]">
-          <div className="font-['Barlow_Condensed',sans-serif] font-black text-xl tracking-wider text-[#C8281E]">HITACHI</div>
-          <div className="text-[9px] font-bold tracking-widest text-[#4A4040] mt-0.5">⚙️ ADMIN CONSOLE</div>
+        <div className="px-4 py-4 border-b border-[#E2E8F0]">
+          <div className="font-['Barlow_Condensed',sans-serif] font-black text-xl tracking-wider text-[#CC0000]">HITACHI</div>
+          <div className="text-[9px] font-bold tracking-widest text-[#94A3B8] mt-0.5">⚙️ ADMIN CONSOLE</div>
         </div>
 
         {/* Nav */}
@@ -958,21 +978,21 @@ export default function AdminConsolePage() {
         </div>
 
         {/* Publish button */}
-        <div className="p-3 border-t border-[#2A1C1E]">
+        <div className="p-3 border-t border-[#E2E8F0]">
           <button onClick={publish}
             data-testid="publish-all-sidebar-btn"
-            className="w-full bg-[#C8281E] hover:bg-[#9B1A12] text-white font-['Barlow_Condensed',sans-serif] font-black text-sm tracking-wider py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+            className="w-full bg-[#CC0000] hover:bg-[#AA0000] text-white font-['Barlow_Condensed',sans-serif] font-black text-sm tracking-wider py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm">
             <Zap size={14} />  PUBLISH ALL
           </button>
         </div>
 
         {/* Links */}
         <div className="px-3 pb-3 space-y-1">
-          <Link to="/" className="flex items-center gap-2 text-[11px] text-[#8A8080] hover:text-white transition-colors">
+          <Link to="/" className="flex items-center gap-2 text-[11px] text-[#64748B] hover:text-[#CC0000] transition-colors">
             <ExternalLink size={11} /> Preview App
           </Link>
           <button onClick={() => { logout(); navigate("/login"); }}
-            className="flex items-center gap-2 text-[11px] text-[#8A8080] hover:text-[#E8453A] transition-colors">
+            className="flex items-center gap-2 text-[11px] text-[#64748B] hover:text-red-500 transition-colors">
             <LogOut size={11} /> Sign Out
           </button>
         </div>
@@ -981,16 +1001,16 @@ export default function AdminConsolePage() {
       {/* ── MAIN ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <div className="h-[58px] flex items-center justify-between px-6 border-b border-[#2A1C1E] bg-[#0C0808] flex-shrink-0">
-          <div className="font-['Barlow_Condensed',sans-serif] font-black text-xl tracking-wide">{PAGE_TITLES[page]}</div>
+        <div className="h-[58px] flex items-center justify-between px-6 border-b border-[#E2E8F0] bg-white flex-shrink-0 shadow-sm">
+          <div className="font-['Barlow_Condensed',sans-serif] font-black text-xl tracking-wide text-[#0F172A]">{PAGE_TITLES[page]}</div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#4ADF8A] animate-pulse" />
-              <span className="text-[11px] text-[#8A8080]">All changes saved · Last published <span className="text-[#C0B8B8]">{pubTime}</span></span>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#1A8A4A] animate-pulse" />
+              <span className="text-[11px] text-[#64748B]">All changes saved · Last published <span className="text-[#0F172A] font-medium">{pubTime}</span></span>
             </div>
             <button onClick={publish}
               data-testid="publish-all-topbar-btn"
-              className="bg-[#C8281E] hover:bg-[#9B1A12] text-white text-[11px] font-bold px-4 py-1.5 rounded-lg transition-all flex items-center gap-1.5">
+              className="bg-[#CC0000] hover:bg-[#AA0000] text-white text-[11px] font-bold px-4 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
               <Zap size={12} /> Publish All Changes
             </button>
           </div>

@@ -255,7 +255,7 @@ services:
         condition: service_healthy
     networks:
       - hsi_network
-    entrypoint: ["/bin/sh", "-c", "chmod +x /backup.sh && crond -f -l 8 & /backup.sh && wait"]
+    entrypoint: ["/bin/sh", "-c", "crond -f -l 8 & sh /backup.sh && wait"]
     restart: unless-stopped
 
 # ── Volumes ────────────────────────────────────────────────────────────────────

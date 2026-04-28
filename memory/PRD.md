@@ -197,6 +197,29 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 
 ---
 
+## Changelog (Sprint D follow-ups — Apr 2026)
+
+### `cancelled` terminal state for incentive_calculations
+- New status `cancelled` joins existing enum `('draft','approved','paid','on_hold')`.
+- DB CHECK constraint updated via idempotent migration in `_ensure_edm_tag_columns`.
+- New endpoint: **`POST /api/admin/payout/calc/{calc_id}/cancel`** — accepts optional `reason` (audited). Rejects (409) if status is already `paid` or `cancelled`. Cancelled rows are excluded from approve / mark-paid sweeps.
+- `hold` endpoint now also rejects `cancelled` rows with 409.
+- `calcs` GET response counts dict now exposes all 5 buckets.
+
+### Payroll-ref validation
+- `^[A-Z0-9-]{3,40}$` regex enforced on `mark-paid` body — invalid input returns **400** with the pattern in the error detail. Auto-generated default `PAYROLL-{quarter}` (e.g. `PAYROLL-2026-Q2`) is also validated.
+
+### Frontend modal pattern (replaces window.confirm)
+- `AdminPayoutPage.jsx` ships an in-app `<Modal>` primitive — used for Approve, Mark Paid, and Cancel-calc flows. Every dialog has a `data-testid` and a danger variant for paid actions.
+- Per-row Cancel button + reason capture textarea added.
+- Status legend now shows 5 chips (draft, approved, paid, on_hold, cancelled).
+
+### TopBar JWT fix
+- `TopBar.jsx` notification bell + mark-read endpoints switched from `credentials: 'include'` (cookies) to `headers: { ...authHeader() }` (JWT). Eliminates the 2× 401s previously logged on first `/admin/console` load.
+
+### Tests
+- `/app/backend/tests/test_sprint_d_followups.py` — **10/10 passing**: payroll_ref invalid-format 400 (3 cases), valid-format persists, cancel happy-path + idempotency, hold-after-cancel 409, cancel-after-paid 409, counts include cancelled bucket, RBAC 403 for employee.
+
 ## Changelog (Sprint D continuation — Apr 2026)
 
 ### Payout state machine (`incentive_calculations.status`)

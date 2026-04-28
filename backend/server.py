@@ -374,7 +374,7 @@ class IncentiveCalcDB(Base):
     payroll_ref     = Column(String, nullable=True)
     created_at      = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
-        CheckConstraint("status IN ('draft','approved','paid','on_hold')", name='chk_inc_status'),
+        CheckConstraint("status IN ('draft','approved','paid','on_hold','cancelled')", name='chk_inc_status'),
         Index('idx_inc_user_quarter', 'user_id', 'quarter', unique=True),
     )
 
@@ -588,6 +588,13 @@ def _ensure_edm_tag_columns():
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                         WHERE table_name='pillars' AND column_name='description') THEN
             ALTER TABLE pillars ADD COLUMN description VARCHAR;
+        END IF;
+        -- Sprint D continuation: extend incentive_calculations status enum to include 'cancelled'
+        IF EXISTS (SELECT 1 FROM information_schema.tables
+                    WHERE table_name='incentive_calculations') THEN
+            ALTER TABLE incentive_calculations DROP CONSTRAINT IF EXISTS chk_inc_status;
+            ALTER TABLE incentive_calculations ADD CONSTRAINT chk_inc_status
+                CHECK (status IN ('draft','approved','paid','on_hold','cancelled'));
         END IF;
     END$$;
     """
@@ -3312,10 +3319,17 @@ def admin_payout_approve(quarter: str, request: Request,
     return {'approved': n, 'quarter': quarter}
 
 
-# ── Payout state-machine: draft → approved → paid (+ on_hold side-state) ──────
+# ── Payout state-machine: draft → approved → paid (+ on_hold / cancelled) ────
+PAYROLL_REF_RE = re.compile(r'^[A-Z0-9-]{3,40}$')
+
+
 class PayoutMarkPaidReq(BaseModel):
     payroll_ref: Optional[str] = None              # e.g. PAYROLL-Q1-2026
     payout_date: Optional[str] = None              # YYYY-MM-DD; defaults to today
+
+
+class PayoutCancelReq(BaseModel):
+    reason: Optional[str] = None                   # human-readable reason
 
 
 @router.post('/admin/payout/{quarter}/mark-paid')
@@ -3329,23 +3343,35 @@ def admin_payout_mark_paid(quarter: str, body: PayoutMarkPaidReq, request: Reque
     except Exception:
         raise HTTPException(400, 'Invalid payout_date (YYYY-MM-DD)')
 
+    # Validate payroll_ref format (uppercase alphanumeric + hyphen, 3-40 chars)
+    if body.payroll_ref and not PAYROLL_REF_RE.match(body.payroll_ref):
+        raise HTTPException(
+            400,
+            'Invalid payroll_ref. Must match ^[A-Z0-9-]{3,40}$ '
+            '(uppercase letters, digits and hyphens, 3-40 chars).'
+        )
+
     rows = (db.query(IncentiveCalcDB)
               .filter(IncentiveCalcDB.quarter == quarter,
                       IncentiveCalcDB.status == 'approved').all())
     if not rows:
         raise HTTPException(409, f'No approved rows for {quarter}. Approve register first.')
+    final_ref = body.payroll_ref or f'PAYROLL-{quarter}'
+    if not PAYROLL_REF_RE.match(final_ref):
+        # Defensive — shouldn't fire because quarter format is YYYY-Qn
+        raise HTTPException(500, f'Generated payroll_ref "{final_ref}" failed validation')
     for r in rows:
         r.status      = 'paid'
         r.payout_date = pd
-        r.payroll_ref = body.payroll_ref or r.payroll_ref or f'PAYROLL-{quarter}'
+        r.payroll_ref = final_ref
     db.commit()
     audit(db, user_id=u.id, actor_email=u.email, action='payout_mark_paid',
           status='success', request=request,
           target_type='quarter', target_id=quarter,
-          details={'paid': len(rows), 'payroll_ref': body.payroll_ref,
+          details={'paid': len(rows), 'payroll_ref': final_ref,
                    'payout_date': pd.isoformat()})
     return {'paid': len(rows), 'quarter': quarter,
-            'payroll_ref': body.payroll_ref or f'PAYROLL-{quarter}',
+            'payroll_ref': final_ref,
             'payout_date': pd.isoformat()}
 
 
@@ -3357,8 +3383,8 @@ def admin_payout_hold(calc_id: str, request: Request,
     inc = db.query(IncentiveCalcDB).filter(IncentiveCalcDB.id == calc_id).first()
     if not inc:
         raise HTTPException(404, 'Calculation not found')
-    if inc.status == 'paid':
-        raise HTTPException(409, 'Cannot hold a paid calculation')
+    if inc.status in ('paid', 'cancelled'):
+        raise HTTPException(409, f'Cannot hold a {inc.status} calculation')
     prev = inc.status
     inc.status = 'on_hold'
     db.commit()
@@ -3390,6 +3416,34 @@ def admin_payout_resume(calc_id: str, request: Request,
     return {'id': calc_id, 'status': 'draft'}
 
 
+@router.post('/admin/payout/calc/{calc_id}/cancel')
+def admin_payout_cancel(calc_id: str, body: PayoutCancelReq, request: Request,
+                        u: UserDB = Depends(require_role('admin', 'super_admin')),
+                        db: Session = Depends(get_db)):
+    """Permanently void a calc (terminal state). Cannot cancel paid rows — those
+    must be reversed via payroll. Cancellation is also terminal: the row will
+    be excluded from all subsequent approve / mark-paid sweeps."""
+    inc = db.query(IncentiveCalcDB).filter(IncentiveCalcDB.id == calc_id).first()
+    if not inc:
+        raise HTTPException(404, 'Calculation not found')
+    if inc.status == 'paid':
+        raise HTTPException(409, 'Cannot cancel a paid calculation — reverse via payroll')
+    if inc.status == 'cancelled':
+        raise HTTPException(409, 'Calculation is already cancelled')
+    prev = inc.status
+    inc.status      = 'cancelled'
+    inc.approved_at = None
+    inc.approved_by = None
+    db.commit()
+    audit(db, user_id=u.id, actor_email=u.email, action='payout_cancel',
+          status='success', request=request,
+          target_type='incentive_calc', target_id=calc_id,
+          details={'previous_status': prev, 'user_id': inc.user_id,
+                   'quarter': inc.quarter, 'reason': body.reason})
+    return {'id': calc_id, 'status': 'cancelled', 'previous_status': prev,
+            'reason': body.reason}
+
+
 @router.get('/admin/payout/{quarter}/calcs')
 def admin_payout_calcs(quarter: str,
                        u: UserDB = Depends(require_role('admin', 'super_admin')),
@@ -3402,7 +3456,7 @@ def admin_payout_calcs(quarter: str,
     if status_filter:
         q = q.filter(IncentiveCalcDB.status == status_filter)
     rows = q.order_by(IncentiveCalcDB.created_at.asc()).all()
-    counts = {'draft': 0, 'approved': 0, 'paid': 0, 'on_hold': 0}
+    counts = {'draft': 0, 'approved': 0, 'paid': 0, 'on_hold': 0, 'cancelled': 0}
     out = []
     for inc, usr in rows:
         counts[inc.status] = counts.get(inc.status, 0) + 1

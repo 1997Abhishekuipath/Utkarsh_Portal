@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
 export default function TopBar({ stats = [], crumbs = null, children = null }) {
-  const { user, logout } = useAuth();
+  const { user, logout, authHeader } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -20,28 +20,28 @@ export default function TopBar({ stats = [], crumbs = null, children = null }) {
 
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await fetch(`${BACKEND}/api/notifications/unread-count`, { credentials: "include" });
+      const res = await fetch(`${BACKEND}/api/notifications/unread-count`, { headers: { ...authHeader() } });
       if (res.ok) { const d = await res.json(); setUnread(d.count || 0); }
     } catch { /* silent */ }
-  }, []);
+  }, [authHeader]);
 
   const fetchNotifs = async () => {
     if (loadingNotifs) return;
     setLoadingNotifs(true);
     try {
-      const res = await fetch(`${BACKEND}/api/notifications?limit=10`, { credentials: "include" });
+      const res = await fetch(`${BACKEND}/api/notifications?limit=10`, { headers: { ...authHeader() } });
       if (res.ok) { const d = await res.json(); setNotifs(d.items || []); }
     } catch { /* silent */ } finally { setLoadingNotifs(false); }
   };
 
   const markRead = async (id) => {
-    await fetch(`${BACKEND}/api/notifications/${id}/read`, { method: "PUT", credentials: "include" });
+    await fetch(`${BACKEND}/api/notifications/${id}/read`, { method: "PUT", headers: { ...authHeader() } });
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnread(prev => Math.max(0, prev - 1));
   };
 
   const markAllRead = async () => {
-    await fetch(`${BACKEND}/api/notifications/read-all`, { method: "PUT", credentials: "include" });
+    await fetch(`${BACKEND}/api/notifications/read-all`, { method: "PUT", headers: { ...authHeader() } });
     setNotifs(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnread(0);
   };

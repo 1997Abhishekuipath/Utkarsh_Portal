@@ -3,15 +3,16 @@ import TopBar from "../components/TopBar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   IndianRupee, Download, FileText, CheckCircle2, AlertCircle, Users,
-  Loader2, ShieldCheck, Calendar, BadgeCheck, PauseCircle, Play, Banknote
+  Loader2, ShieldCheck, Calendar, BadgeCheck, PauseCircle, Play, Banknote, XCircle, X
 } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const STATUS_COLOR = {
-  draft:    "bg-gray-100  text-gray-700  border-gray-200",
-  approved: "bg-blue-50   text-blue-700  border-blue-200",
-  paid:     "bg-green-50  text-green-700 border-green-200",
-  on_hold:  "bg-amber-50  text-amber-700 border-amber-200",
+  draft:     "bg-gray-100   text-gray-700   border-gray-200",
+  approved:  "bg-blue-50    text-blue-700   border-blue-200",
+  paid:      "bg-green-50   text-green-700  border-green-200",
+  on_hold:   "bg-amber-50   text-amber-700  border-amber-200",
+  cancelled: "bg-rose-50    text-rose-700   border-rose-200",
 };
 
 export default function AdminPayoutPage() {
@@ -25,6 +26,10 @@ export default function AdminPayoutPage() {
   const [busy, setBusy] = useState(null);   // 'approve' | 'pay' | calcId
   const [toast, setToast] = useState(null);
   const [payrollRef, setPayrollRef] = useState("");
+  // In-app confirm modal — replaces window.confirm so the page never blocks
+  // on browser-native dialogs (which are not stylable + can't be tested via DOM).
+  const [confirmDlg, setConfirmDlg] = useState(null);   // { title, body, danger, onYes }
+  const [cancelDlg, setCancelDlg] = useState(null);     // { calc, reason }
 
   const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2800); };
 
@@ -90,33 +95,51 @@ export default function AdminPayoutPage() {
     } finally { setDownloading(null); }
   };
 
-  const approve = async () => {
+  const approve = () => {
     if (!active) return;
-    if (!window.confirm(`Approve payout register for ${active}? This freezes the calculation.`)) return;
-    setBusy("approve");
-    try {
-      const d = await apiPost(`/api/admin/payout/${active}/approve`);
-      showToast(`Approved ${d.approved} payout rows for ${d.quarter}`);
-      loadAll(active);
-    } catch (err) {
-      showToast(`Approve failed: ${err.message}`, "error");
-    } finally { setBusy(null); }
+    setConfirmDlg({
+      title: `Approve payout register for ${active}?`,
+      body:  "This freezes the calculation snapshot — already-paid and on-hold rows are skipped.",
+      danger: false,
+      ctaLabel: "Approve",
+      ctaTestId: "confirm-approve-btn",
+      onYes: async () => {
+        setBusy("approve");
+        try {
+          const d = await apiPost(`/api/admin/payout/${active}/approve`);
+          showToast(`Approved ${d.approved} payout rows for ${d.quarter}`);
+          loadAll(active);
+        } catch (err) {
+          showToast(`Approve failed: ${err.message}`, "error");
+        } finally { setBusy(null); }
+      },
+    });
   };
 
-  const markPaid = async () => {
+  const markPaid = () => {
     if (!active) return;
-    if (!window.confirm(`Mark all approved rows for ${active} as PAID? This cannot be undone except via DB.`)) return;
-    setBusy("pay");
-    try {
-      const d = await apiPost(`/api/admin/payout/${active}/mark-paid`, {
-        payroll_ref: payrollRef || null,
-      });
-      showToast(`✓ Paid ${d.paid} rows · ref ${d.payroll_ref}`);
-      setPayrollRef("");
-      loadAll(active);
-    } catch (err) {
-      showToast(`Mark paid failed: ${err.message}`, "error");
-    } finally { setBusy(null); }
+    setConfirmDlg({
+      title: `Mark all approved rows for ${active} as PAID?`,
+      body:  payrollRef
+        ? `Payroll ref: ${payrollRef}. This is the final state — reverse only via payroll.`
+        : "An auto-generated payroll ref will be used. This is the final state — reverse only via payroll.",
+      danger: true,
+      ctaLabel: "Mark Paid",
+      ctaTestId: "confirm-mark-paid-btn",
+      onYes: async () => {
+        setBusy("pay");
+        try {
+          const d = await apiPost(`/api/admin/payout/${active}/mark-paid`, {
+            payroll_ref: payrollRef || null,
+          });
+          showToast(`✓ Paid ${d.paid} rows · ref ${d.payroll_ref}`);
+          setPayrollRef("");
+          loadAll(active);
+        } catch (err) {
+          showToast(`Mark paid failed: ${err.message}`, "error");
+        } finally { setBusy(null); }
+      },
+    });
   };
 
   const hold = async (calcId) => {
@@ -141,11 +164,92 @@ export default function AdminPayoutPage() {
     } finally { setBusy(null); }
   };
 
+  const submitCancel = async () => {
+    if (!cancelDlg?.calc) return;
+    setBusy(cancelDlg.calc.id);
+    try {
+      await apiPost(`/api/admin/payout/calc/${cancelDlg.calc.id}/cancel`, {
+        reason: cancelDlg.reason || null,
+      });
+      showToast(`Cancelled ${cancelDlg.calc.name}'s calc`);
+      setCancelDlg(null);
+      loadAll(active);
+    } catch (err) {
+      showToast(`Cancel failed: ${err.message}`, "error");
+    } finally { setBusy(null); }
+  };
+
   const counts = calcs.counts || {};
   const hasApproved = (counts.approved || 0) > 0;
 
   return (
     <div className="min-h-screen bg-[#F1F5F9]">
+      {/* Generic confirm modal — replaces window.confirm */}
+      {confirmDlg && (
+        <Modal onClose={() => setConfirmDlg(null)} testId="confirm-modal">
+          <ModalHeader title={confirmDlg.title} onClose={() => setConfirmDlg(null)} />
+          <div className="px-5 py-4 text-sm text-gray-600">{confirmDlg.body}</div>
+          <ModalFooter>
+            <button type="button"
+              onClick={() => setConfirmDlg(null)}
+              data-testid="confirm-cancel-btn"
+              className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">
+              Cancel
+            </button>
+            <button type="button"
+              onClick={() => { const cb = confirmDlg.onYes; setConfirmDlg(null); cb && cb(); }}
+              data-testid={confirmDlg.ctaTestId || "confirm-yes-btn"}
+              className={`px-4 py-2 text-sm font-medium rounded-lg ${
+                confirmDlg.danger
+                  ? "text-white bg-[#CC0000] hover:bg-red-700"
+                  : "text-white bg-blue-600 hover:bg-blue-700"
+              }`}>
+              {confirmDlg.ctaLabel || "Confirm"}
+            </button>
+          </ModalFooter>
+        </Modal>
+      )}
+
+      {/* Cancel-calc modal — captures optional reason */}
+      {cancelDlg && (
+        <Modal onClose={() => setCancelDlg(null)} testId="cancel-calc-modal">
+          <ModalHeader title={`Cancel ${cancelDlg.calc?.name}'s calc?`} onClose={() => setCancelDlg(null)} />
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              This is a <strong className="text-rose-700">terminal</strong> state — the row will be permanently
+              excluded from approve / mark-paid sweeps. Use this when finance needs to void a calc that
+              cannot be paid out (e.g. employee left, dispute resolved off-platform).
+            </p>
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+                Reason (optional, audited)
+              </span>
+              <textarea rows={2}
+                value={cancelDlg.reason}
+                onChange={(e) => setCancelDlg({ ...cancelDlg, reason: e.target.value })}
+                data-testid="cancel-reason-input"
+                placeholder="e.g. Employee separated 2026-03-15 · payroll-out-of-band-settlement"
+                className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+            </label>
+          </div>
+          <ModalFooter>
+            <button type="button"
+              onClick={() => setCancelDlg(null)}
+              className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">
+              Keep
+            </button>
+            <button type="button"
+              onClick={submitCancel}
+              disabled={busy === cancelDlg.calc?.id}
+              data-testid="cancel-calc-confirm-btn"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg disabled:opacity-60">
+              {busy === cancelDlg.calc?.id ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+              Cancel calc
+            </button>
+          </ModalFooter>
+        </Modal>
+      )}
+
       {toast && (
         <div role="status" aria-live="polite"
           data-testid="payout-toast"
@@ -287,23 +391,37 @@ export default function AdminPayoutPage() {
                         <td className="px-5 py-3 text-xs text-gray-500">{c.payout_date || "—"}</td>
                         <td className="px-5 py-3 text-right">
                           {c.status === "paid" ? (
-                            <span className="text-xs text-gray-400">—</span>
-                          ) : c.status === "on_hold" ? (
-                            <button type="button" onClick={() => resume(c.id)}
-                              disabled={busy === c.id}
-                              data-testid={`calc-resume-${c.id}`}
-                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-                              {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                              Resume
-                            </button>
+                            <span className="text-xs text-gray-400">paid · final</span>
+                          ) : c.status === "cancelled" ? (
+                            <span className="text-xs text-rose-500">cancelled</span>
                           ) : (
-                            <button type="button" onClick={() => hold(c.id)}
-                              disabled={busy === c.id}
-                              data-testid={`calc-hold-${c.id}`}
-                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
-                              {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <PauseCircle size={11} />}
-                              Hold
-                            </button>
+                            <div className="inline-flex gap-1">
+                              {c.status === "on_hold" ? (
+                                <button type="button" onClick={() => resume(c.id)}
+                                  disabled={busy === c.id}
+                                  data-testid={`calc-resume-${c.id}`}
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                                  {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                                  Resume
+                                </button>
+                              ) : (
+                                <button type="button" onClick={() => hold(c.id)}
+                                  disabled={busy === c.id}
+                                  data-testid={`calc-hold-${c.id}`}
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+                                  {busy === c.id ? <Loader2 size={11} className="animate-spin" /> : <PauseCircle size={11} />}
+                                  Hold
+                                </button>
+                              )}
+                              <button type="button"
+                                onClick={() => setCancelDlg({ calc: c, reason: "" })}
+                                disabled={busy === c.id}
+                                data-testid={`calc-cancel-${c.id}`}
+                                title="Permanently void this calc"
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                                <XCircle size={11} /> Cancel
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -326,6 +444,43 @@ function SummaryTile({ label, icon, value, mono }) {
       <div className={`text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2 ${mono ? "tabular-nums" : ""}`}>
         {icon} {value}
       </div>
+    </div>
+  );
+}
+
+/* ── In-app modal primitives (tiny — no extra dependency) ─────────────── */
+function Modal({ children, onClose, testId }) {
+  return (
+    <div role="dialog" aria-modal="true"
+      data-testid={testId}
+      className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <button type="button"
+        aria-label="Dismiss dialog"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm cursor-default" />
+      <div className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md animate-in fade-in zoom-in-95 duration-150">
+        {children}
+      </div>
+    </div>
+  );
+}
+function ModalHeader({ title, onClose }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+      <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+      <button type="button" onClick={onClose}
+        aria-label="Close dialog"
+        className="text-gray-400 hover:text-gray-700 p-1 rounded">
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+function ModalFooter({ children }) {
+  return (
+    <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50/50 rounded-b-xl">
+      {children}
     </div>
   );
 }

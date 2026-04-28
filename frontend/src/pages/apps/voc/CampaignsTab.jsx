@@ -129,8 +129,9 @@ export default function CampaignsTab() {
             {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} · Create, send and track survey campaigns per account
           </p>
         </div>
-        <button onClick={() => { setShowForm(v => !v); setError(null); }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors">
+        <button onClick={() => { setShowForm(true); setError(null); }}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors"
+          data-testid="new-campaign-btn">
           <Plus size={13} />NEW CAMPAIGN
         </button>
       </div>
@@ -141,7 +142,8 @@ export default function CampaignsTab() {
 
       {/* Create Campaign Form */}
       {showForm && (
-        <div className="bg-white rounded-xl border-2 border-[#CC0000]/20 p-5 mb-6 shadow-sm">
+        <div className="bg-white rounded-xl border-2 border-[#CC0000]/20 p-5 mb-6 shadow-sm"
+          data-testid="new-campaign-form">
           <div className="text-[10px] font-bold tracking-widest text-[#64748B] uppercase mb-4">New Campaign</div>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
@@ -181,7 +183,8 @@ export default function CampaignsTab() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={handleCreate} disabled={creating}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors disabled:opacity-60">
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors disabled:opacity-60"
+              data-testid="create-campaign-submit">
               {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
               {creating ? "Creating…" : "Create Campaign"}
             </button>
@@ -249,7 +252,8 @@ export default function CampaignsTab() {
 
                 <div className="px-5 pb-4">
                   <button onClick={() => openSendModal(c)}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold border border-[#E2E8F0] text-[#64748B] hover:border-[#CC0000]/30 hover:text-[#CC0000] hover:bg-red-50 transition-all">
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold border border-[#E2E8F0] text-[#64748B] hover:border-[#CC0000]/30 hover:text-[#CC0000] hover:bg-red-50 transition-all"
+                    data-testid={`send-campaign-${c.id}`}>
                     <Send size={12} />SEND SURVEY
                   </button>
                 </div>
@@ -261,7 +265,8 @@ export default function CampaignsTab() {
 
       {/* Send Modal */}
       {sendModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          data-testid="send-campaign-modal">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
             <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
               <div>
@@ -283,7 +288,8 @@ export default function CampaignsTab() {
                     </label>
                     <textarea value={recipients} onChange={e => setRecipients(e.target.value)}
                       rows={5} placeholder={"john.doe@client.com\njane.smith@client.com"}
-                      className="w-full px-3 py-2.5 text-sm border-2 border-[#E2E8F0] rounded-lg focus:border-[#CC0000] focus:outline-none resize-none font-mono" />
+                      className="w-full px-3 py-2.5 text-sm border-2 border-[#E2E8F0] rounded-lg focus:border-[#CC0000] focus:outline-none resize-none font-mono"
+                      data-testid="send-recipients-input" />
                     <p className="text-[10px] text-[#94A3B8] mt-1">
                       Single-use survey links will be generated for each email. Links expire in 72 hours.
                     </p>
@@ -291,7 +297,8 @@ export default function CampaignsTab() {
                   {error && <p className="text-xs text-red-600">{error}</p>}
                   <div className="flex gap-3">
                     <button onClick={handleSend} disabled={sending}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] disabled:opacity-60 transition-colors">
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] disabled:opacity-60 transition-colors"
+                      data-testid="send-campaign-submit">
                       {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                       {sending ? "Sending…" : "Generate & Send"}
                     </button>

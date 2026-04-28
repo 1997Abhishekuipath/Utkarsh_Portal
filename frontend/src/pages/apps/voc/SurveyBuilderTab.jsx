@@ -225,7 +225,8 @@ export default function SurveyBuilderTab() {
             {showPreview ? "Hide" : "Show"} Preview
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold text-white bg-[#CC0000] hover:bg-[#AA0000] transition-colors disabled:opacity-60"
+            data-testid="save-survey-btn">
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving…" : "Save Survey"}
           </button>
@@ -233,7 +234,8 @@ export default function SurveyBuilderTab() {
       </div>
 
       {savedId && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+        <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700"
+          data-testid="save-survey-success">
           <CheckCircle2 size={16} />
           <span>Survey saved successfully! You can now create a campaign using this survey.</span>
         </div>

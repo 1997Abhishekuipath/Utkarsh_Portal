@@ -3,7 +3,8 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   BookOpen, Calendar, Users, LayoutDashboard, GitBranch,
   Shield, UserCheck, GraduationCap, BarChart2, ArrowLeft,
-  Building2, LogOut, Settings, Plus, Search, ClipboardList, Mail
+  Building2, LogOut, Settings, Plus, Search, ClipboardList, Mail,
+  HardHat, Wrench
 } from "lucide-react";
 
 const APP_CONFIG = {
@@ -82,12 +83,98 @@ export default function AppPage() {
   const config = APP_CONFIG[appId];
 
   if (!config) {
+    // Derive a display name from the URL slug (e.g. "reward-points" → "Reward Points")
+    const displayName = appId
+      ? appId.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+      : "This App";
+
     return (
-      <div className="flex items-center justify-center h-screen bg-[#F1F5F9]">
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-[#0F172A] mb-2">App Not Found</h2>
-          <Link to="/" className="text-[#CC0000] hover:underline text-sm">Back to Dashboard</Link>
+      <div className="min-h-screen bg-[#F1F5F9]">
+        {/* Top Nav */}
+        <div className="bg-[#CC0000] border-b border-white/20">
+          <div className="max-w-7xl mx-auto px-5 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 bg-white/20 rounded flex items-center justify-center">
+                <Building2 size={14} className="text-white" />
+              </div>
+              <span className="text-white text-xs font-semibold tracking-wider">HITACHI SYSTEMS INDIA</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {user?.role === "admin" && (
+                <Link to="/admin" className="text-white/70 hover:text-white text-xs px-3 py-1 rounded hover:bg-white/10 flex items-center gap-1 transition-colors">
+                  <Settings size={13} /><span>Admin</span>
+                </Link>
+              )}
+              <button onClick={() => { logout(); navigate("/login"); }}
+                className="text-white/70 hover:text-white text-xs px-3 py-1 rounded hover:bg-white/10 flex items-center gap-1 transition-colors">
+                <LogOut size={13} /><span>Sign Out</span>
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Gradient header */}
+        <div className="bg-gradient-to-r from-[#CC0000] to-[#7B0000] px-5 py-10">
+          <div className="max-w-7xl mx-auto">
+            <button onClick={() => navigate("/")}
+              className="flex items-center gap-2 text-white/70 hover:text-white text-sm mb-6 transition-colors">
+              <ArrowLeft size={16} /><span>Back to Dashboard</span>
+            </button>
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                <HardHat size={28} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white font-['Outfit']">{displayName}</h1>
+                <p className="text-white/70 text-sm mt-1">This app is currently being built for you.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Under construction card */}
+        <main className="max-w-7xl mx-auto px-5 py-12">
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-16 text-center">
+            {/* Icon */}
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 bg-amber-50">
+              <Wrench size={36} className="text-amber-500" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-[#0F172A] mb-3 font-['Outfit']">
+              Page Under Construction
+            </h2>
+            <p className="text-[#475569] text-sm max-w-md mx-auto mb-8 leading-relaxed">
+              <span className="font-semibold text-[#0F172A]">{displayName}</span> is actively being developed by the HSI team.
+              Screenshots and feature specs will be shared soon.
+            </p>
+
+            {/* Status badge */}
+            <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-full px-5 py-2 text-sm font-semibold mb-8">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              In Development — Coming Soon
+            </div>
+
+            {/* Steps */}
+            <div className="grid grid-cols-3 gap-4 max-w-xl mx-auto mb-10">
+              {[
+                { step: "01", label: "Design", done: true },
+                { step: "02", label: "Development", done: true },
+                { step: "03", label: "Launch", done: false },
+              ].map(({ step, label, done }) => (
+                <div key={step} className={`rounded-xl p-4 border ${done ? "bg-[#F0FDF4] border-emerald-200" : "bg-[#F8FAFC] border-[#E2E8F0]"}`}>
+                  <div className={`text-xs font-black mb-1 tracking-widest ${done ? "text-emerald-600" : "text-[#94A3B8]"}`}>{step}</div>
+                  <div className={`text-sm font-bold ${done ? "text-emerald-700" : "text-[#64748B]"}`}>{label}</div>
+                  <div className={`text-[10px] mt-0.5 font-semibold ${done ? "text-emerald-500" : "text-[#94A3B8]"}`}>{done ? "✓ Complete" : "Pending"}</div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => navigate("/")}
+              className="inline-flex items-center gap-2 bg-[#CC0000] hover:bg-[#AA0000] text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm">
+              <ArrowLeft size={15} /> Back to Dashboard
+            </button>
+          </div>
+        </main>
       </div>
     );
   }

@@ -347,11 +347,42 @@ frontend:
           - Pending Approvals and Recent Notifications sections
           
           **Minor Note:** Comment in App.js line 74 says "dark CMS" but implementation is correctly light theme (comment only, not code issue).
+  
+  - task: "Page Under Construction Screen — Unknown app routes"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/AppPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ TESTED: Page Under Construction screen displays correctly for unknown app routes (tested with /apps/reward-points).
+          
+          **All Required Elements Verified:**
+          - ✅ Shows "Page Under Construction" (NOT "App Not Found")
+          - ✅ HSI red gradient header (from-[#CC0000] to-[#7B0000])
+          - ✅ "Back to Dashboard" button in header
+          - ✅ Wrench icon in amber/yellow circle (bg-amber-50)
+          - ✅ Title: "Page Under Construction"
+          - ✅ Subtitle mentioning app name ("Reward Points is actively being developed by the HSI team...")
+          - ✅ Status badge: "In Development — Coming Soon" with animated pulse dot
+          - ✅ Three progress steps: "01 Design ✓ Complete", "02 Development ✓ Complete", "03 Launch Pending"
+          - ✅ Red "Back to Dashboard" button at bottom (bg-[#CC0000])
+          
+          **Test Details:**
+          - Login flow: admin@hitachi-systems.com / Admin@123 / OTP: 000000 ✓
+          - Navigation to /apps/reward-points successful ✓
+          - Page renders without errors ✓
+          - All visual elements match specification ✓
+          - Screenshot captured for verification ✓
 
 metadata:
   created_by: "main_agent"
-  version: "3.1"
-  test_sequence: 4
+  version: "3.2"
+  test_sequence: 5
   run_ui: false
 
 test_plan:
@@ -432,3 +463,31 @@ agent_communication:
       - All visual elements match light theme specification
       
       **Minor Note:** App.js line 74 comment says "dark CMS" but code correctly implements light theme.
+  
+  - agent: "testing"
+    message: |
+      ✅ PAGE UNDER CONSTRUCTION SCREEN VERIFICATION COMPLETED
+      
+      **Test Request:** Verify /apps/reward-points shows "Page Under Construction" (NOT "App Not Found")
+      
+      **Result:** PASS - All required elements present and correctly styled
+      
+      **Verified Elements:**
+      - ✅ "Page Under Construction" title (NOT "App Not Found")
+      - ✅ HSI red gradient header (from-[#CC0000] to-[#7B0000])
+      - ✅ "Back to Dashboard" button in header
+      - ✅ Wrench icon in amber/yellow circle
+      - ✅ Title: "Page Under Construction"
+      - ✅ Subtitle mentioning "Reward Points" app name
+      - ✅ Status badge: "In Development — Coming Soon" with animated pulse dot
+      - ✅ Three progress steps: "01 Design ✓ Complete", "02 Development ✓ Complete", "03 Launch Pending"
+      - ✅ Red "Back to Dashboard" button at bottom
+      
+      **Test Flow:**
+      - Login: admin@hitachi-systems.com / Admin@123 / OTP: 000000 ✓
+      - Navigation to /apps/reward-points successful ✓
+      - Page renders without errors ✓
+      - All visual elements match specification ✓
+      - Screenshot captured for verification ✓
+      
+      **Implementation:** AppPage.jsx handles unknown app routes by showing a well-designed "Page Under Construction" screen instead of a generic 404 error. This provides better UX for apps that are planned but not yet implemented.

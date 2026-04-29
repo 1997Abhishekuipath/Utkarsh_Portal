@@ -281,8 +281,13 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - Verified e2e: generated insight on 60 responses (NPS 17, CSAT 4.08) returned 7 themes, 4 pain points, 4 P0/P1 recommendations.
 
 ## Outstanding — VoC Phase 3 (Frontend) & Phase 4
-- [ ] P0: `AiInsightsTab.jsx` — "Generate Insights" CTA, period/account filters, render executive summary + theme chips + pain-points accordion + recommendations table.
-- [ ] P0: `WorkflowTab.jsx` — kanban/list of detractor tasks with drag-to-status + resolution notes modal.
-- [ ] P0: Wire both tabs into `NPSCsatPage.jsx`.
-- [ ] P1: Phase 4 — RLS security layer, rate-limiting on `/voc/insights/generate`, DB indexes on `voc_responses(submitted_at)`, response caching for dashboard endpoints.
-- [ ] P2: Refactor `/app/backend/server.py` (~5,140 lines) into `routes/` + `models/` once next feature lands.
+- [x] **DONE** P0: `AiInsightsTab.jsx` — period/account filters, GENERATE INSIGHTS, executive summary card + themes / strengths / pain-points / recommendations / risk-accounts panels, recent-runs history side panel.
+- [x] **DONE** P0: `WorkflowTab.jsx` — 3-column kanban (open/in_progress/resolved) with task edit modal (status switcher + resolution notes + assignee), account filter.
+- [x] **DONE** P0: Wired both tabs into `NPSCsatPage.jsx`; tested e2e (`/app/test_reports/iteration_7.json`, 19/19 pytest + 100% frontend).
+- [ ] P1: Add rate-limiting on `POST /api/voc/insights/generate` (prevent runaway LLM spend) — `rl_check('voc_insight_gen', user_id, 5, 3600)`.
+- [ ] P1: Phase 4 — RLS security layer, DB indexes on `voc_responses(submitted_at)`, response caching for dashboard endpoints.
+- [ ] P1: Optimistic UI in `WorkflowTab.handleSave` (avoid full re-load on every edit).
+- [ ] P1: Eliminate N+1 queries in `voc_workflow_list` (use `joinedload` or batched IN-query).
+- [ ] P2: Convert `voc_ai_insights.insights_json` (TEXT) → JSONB for future server-side filtering.
+- [ ] P2: Refactor `/app/backend/server.py` (~5,140 lines) → `/app/backend/routers/voc_phase{1,2,3}.py` modules.
+- [ ] P2: Surface 502 on malformed LLM JSON instead of empty-arrays fallback.

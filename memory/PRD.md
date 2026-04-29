@@ -253,3 +253,36 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - [ ] Refactor `server.py` (>3,400 lines) into `/app/backend/routes/` and `/app/backend/models/` once next major feature lands.
 - [ ] Wrap admin save handlers with `if (!r.ok)` so failed PUTs surface a red "Save failed" toast instead of silent success.
 
+
+## Changelog (VoC Intelligence Platform — Feb 2026)
+
+### Phase 1 — Dashboard & Accounts (DONE)
+- DB models: `VocAccountDB`, `VocSurveyDB`, `VocCampaignDB`, `VocResponseDB`, `VocSurveyTokenDB`.
+- Seed: 6 enterprise accounts + ~85 demo responses across NPS/CSAT ranges.
+- 6 endpoints: `/api/voc/dashboard/kpis`, `/trend`, `/verbatims`, `/pain-points`, `/csat-distribution`, `/strengths`, `/voc/accounts` CRUD.
+- Frontend: `DashboardTab.jsx`, `AccountsTab.jsx` wired via `useVocDashboard.js`.
+
+### Phase 2 — Survey Builder, Campaigns, Public Survey (DONE)
+- Added `VocEmailLogDB` for delivery events (sent/opened/clicked/bounced).
+- Endpoints: Survey CRUD (`/api/voc/surveys/*`), Campaign CRUD + `/send` (single-use token generation + optional AWS SES delivery), Public survey read/submit (`/api/voc/public/survey/:token`).
+- Frontend: `SurveyBuilderTab.jsx`, `CampaignsTab.jsx`, public `SurveyResponsePage.jsx` wired via `App.js`.
+
+### Phase 3 — AI Insights & Workflow (Backend DONE · Feb 2026)
+- DB models: `VocAiInsightDB` (cached snapshot), `VocWorkflowTaskDB` (detractor follow-up tasks).
+- Seed: 12 workflow tasks auto-created from detractor responses (NPS ≤ 6) assigned to Manager.
+- **OpenRouter integration via `httpx.AsyncClient`** (direct, not emergentintegrations) — model: `anthropic/claude-sonnet-4`. Keys in `/app/backend/.env`: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `OPENROUTER_SITE_URL`, `OPENROUTER_SITE_NAME`.
+- Endpoints:
+  - `POST /api/voc/insights/generate` — aggregates last-N-days responses (default 90, optional account filter), prompts LLM for McKinsey SCR + themes + pain points + strengths + recommendations (P0/P1/P2) + risk accounts, persists snapshot.
+  - `GET /api/voc/insights` — recent snapshots list.
+  - `GET /api/voc/insights/{id}` — single snapshot fetch.
+  - `GET /api/voc/workflow/tasks` — detractor task list with full response/account/assignee context; supports `?status=` and `?account_id=` filters.
+  - `PATCH /api/voc/workflow/tasks/{id}` — status (`open|in_progress|resolved`), notes, reassign. Sets `resolved_at` automatically.
+  - `GET /api/voc/workflow/stats` — counts by status for the kanban board.
+- Verified e2e: generated insight on 60 responses (NPS 17, CSAT 4.08) returned 7 themes, 4 pain points, 4 P0/P1 recommendations.
+
+## Outstanding — VoC Phase 3 (Frontend) & Phase 4
+- [ ] P0: `AiInsightsTab.jsx` — "Generate Insights" CTA, period/account filters, render executive summary + theme chips + pain-points accordion + recommendations table.
+- [ ] P0: `WorkflowTab.jsx` — kanban/list of detractor tasks with drag-to-status + resolution notes modal.
+- [ ] P0: Wire both tabs into `NPSCsatPage.jsx`.
+- [ ] P1: Phase 4 — RLS security layer, rate-limiting on `/voc/insights/generate`, DB indexes on `voc_responses(submitted_at)`, response caching for dashboard endpoints.
+- [ ] P2: Refactor `/app/backend/server.py` (~5,140 lines) into `routes/` + `models/` once next feature lands.

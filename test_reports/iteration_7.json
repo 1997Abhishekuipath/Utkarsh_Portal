@@ -1,0 +1,71 @@
+{
+  "summary": "VoC Phase 3 (AI Insights via OpenRouter + Workflow board) end-to-end verification. 19/19 pytest PASS including a LIVE Claude Sonnet 4 generate call (returned well-formed JSON with all required keys). Frontend E2E confirmed: admin login (2-step OTP), /apps/nps-csat tab switching, Workflow board with 12 detractor cards across columns, task edit modal (status → in_progress + notes → save → card moves column), AI Insights GENERATE → executive-summary + themes + strengths + pain-points + recommendations cards render, recent runs side-panel updates. Phase 1 + Phase 2 regression (9 endpoints) still 200.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "AiInsightsTab days-select",
+        "issues": ["Hydration warning in console: emergent dev tooling injects <span> inside <option> (same as iteration_6). Harmless in dev; likely disappears in prod build. Consider wrapping the option label in a plain string to silence."]
+      },
+      {
+        "screen": "Global",
+        "issues": ["WebSocket connection to wss://…/api/ws fails (closed before established). Non-blocking; likely redis-pubsub fallback edge. Already flagged earlier."]
+      }
+    ]
+  },
+  "phase3_results": {
+    "backend": {
+      "workflow_stats": "PASS — returns {open, in_progress, resolved, total}; total = 12",
+      "workflow_tasks_list": "PASS — 12 tasks with response/account/assignee context",
+      "workflow_filters": "PASS — status= and account_id= both narrow correctly",
+      "workflow_patch_state_machine": "PASS — open→in_progress→resolved→open, resolved_at set and cleared correctly",
+      "workflow_patch_400_invalid_status": "PASS",
+      "workflow_patch_404_unknown_id": "PASS",
+      "insights_list_and_404": "PASS",
+      "insights_generate_live_openrouter": "PASS — real Claude Sonnet 4 call completed in ~12s, JSON contained executive_summary, key_themes (6), pain_points (4), strengths (4), recommendations with action/priority/owner/expected_impact, risk_accounts array. Snapshot persisted and retrievable via GET /api/voc/insights/{id}."
+    },
+    "frontend": {
+      "login_2step_otp": "PASS",
+      "nav_tab_workflow": "PASS — 12 task cards, all 3 columns present (initially all 12 were 'open' in fresh run)",
+      "workflow_task_edit_modal": "PASS — modal opens, status=in_progress + notes → Save → modal closes, card moved to in_progress column, header counts updated",
+      "workflow_account_filter": "PASS — 7 options populated (6 accounts + 'All accounts')",
+      "nav_tab_ai_insights": "PASS — period input / days select / account select / GENERATE button all visible",
+      "ai_insights_generate": "PASS — executive-summary, themes-card, strengths-card, pain-points-card, recommendations-card rendered; history side-panel shows 2 recent runs"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_voc_phase3.py",
+    "/app/test_reports/pytest/voc_phase3.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: the Phase-3 pytest run created 2 VoC insight snapshots (live OpenRouter). Not harmful but main agent may want a teardown to cap accumulation at N runs per period.",
+    "Optional: silence <span>-in-<option> hydration warning by wrapping days option label in a plain string (dev-tooling artifact).",
+    "Optional: investigate the transient WS close on first NPSCsatPage load."
+  ],
+  "critical_code_review_comments": [
+    "server.py crossed 5139 lines (guideline 700). Phase 3 block 4708-4993 (~285 lines) is a clean split candidate into /app/backend/routers/voc_phase3.py (together with surveys/campaigns/dashboard already concentrated around 3856-4700, ~850 lines of VoC code that should become its own module).",
+    "voc_insights_generate stores insights_json via json.dumps but not via a Pydantic response model, and on parse-failure falls back to putting the raw content into executive_summary (line 4816). A malformed LLM response will silently degrade into an 'insight' with empty arrays — consider logging a warning and surfacing a 502 instead so callers know it was not strict JSON.",
+    "voc_insights_generate does NOT rate-limit — a malicious admin could hit OpenRouter repeatedly (each call costs $). Add rl_check('voc_insight_gen', user_id, 5, 3600) or similar.",
+    "voc_workflow_list does N+1 queries (per-task joins to VocResponseDB / VocAccountDB / UserDB). With 200 tasks that's 600 queries. Use joinedload or a single IN-query prefetch keyed by id.",
+    "Insight JSON blob is stored as TEXT (insights_json); consider JSONB column on PostgreSQL to enable server-side filtering/aggregation later.",
+    "AiInsightsTab.jsx handleGenerate axios has no timeout — UI will spin indefinitely if backend hangs. Add axios timeout: 120000 to avoid stuck spinners.",
+    "WorkflowTab.jsx handleSave calls full load() on every save (re-fetches tasks+stats+accounts). For 12 tasks fine, but with 200 tasks this is wasteful — optimistic local update + stat-only refetch would be cheaper."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_voc_phase3.py (new — 19 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 pytest — including LIVE Claude Sonnet 4 call)",
+    "frontend": "100% (login, both Phase 3 tabs, modal flow, live AI generate all functional)"
+  },
+  "test_credentials": "Admin: admin@hitachi-systems.com / Admin@123, OTP 000000 (demo override). 2-step login: POST /api/auth/login (returns requires_otp:true) → POST /api/auth/verify-otp with code=000000 → access_token.",
+  "seed_data_creation": "Pytest run mutated 1 workflow task through open→in_progress→resolved→open (net change = 0). Created 1 AI insight snapshot via live OpenRouter call. Frontend e2e moved a second task open→in_progress with note 'TEST_PHASE3_e2e note' and created a 2nd AI snapshot. Net state: 11 workflow tasks in 'open', 1 in 'in_progress', 0 in 'resolved'; 2 VocAiInsight rows present. Notable: review request said '~12 detractor tasks with optional assignee' but ALL 12 were in 'open' with no assignee_id set on any of them — seed data only populates status=open.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_voc_phase3.py runs in ~15s (incl. 1 live OpenRouter call). Invocation: REACT_APP_BACKEND_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2) python -m pytest backend/tests/test_voc_phase3.py -v. NOTE: review request referenced '/api/voc/dashboard/accounts' — actual endpoint is '/api/voc/accounts' (path was corrected in the test). Phase 3 UI all use correct data-testids as listed. OpenRouter key in backend/.env is live and working (Claude Sonnet 4). All 12 workflow tasks start life in 'open' — to test UI columns populated you'll need to move some via PATCH or UI before visual checks. Hydration warning <span>-in-<option> on days dropdown is cosmetic dev-tooling only."
+}

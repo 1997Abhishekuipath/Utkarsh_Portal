@@ -11,6 +11,8 @@ const DashboardTab   = lazy(() => import("./voc/DashboardTab"));
 const AccountsTab    = lazy(() => import("./voc/AccountsTab"));
 const SurveyBuilderTab = lazy(() => import("./voc/SurveyBuilderTab"));
 const CampaignsTab   = lazy(() => import("./voc/CampaignsTab"));
+const AiInsightsTab  = lazy(() => import("./voc/AiInsightsTab"));
+const WorkflowTab    = lazy(() => import("./voc/WorkflowTab"));
 
 // Placeholder for future tabs
 const ComingSoon = ({ tab }) => (
@@ -71,6 +73,18 @@ export default function NPSCsatPage() {
         return (
           <Suspense fallback={<TabLoader />}>
             <AccountsTab />
+          </Suspense>
+        );
+      case "AI INSIGHTS":
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <AiInsightsTab />
+          </Suspense>
+        );
+      case "WORKFLOW":
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <WorkflowTab />
           </Suspense>
         );
       default:

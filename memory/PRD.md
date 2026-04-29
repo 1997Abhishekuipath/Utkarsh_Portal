@@ -284,9 +284,9 @@ All 7 are pre-approved (`is_active=True`). New self-service registrations land i
 - [x] **DONE** P0: `AiInsightsTab.jsx` — period/account filters, GENERATE INSIGHTS, executive summary card + themes / strengths / pain-points / recommendations / risk-accounts panels, recent-runs history side panel.
 - [x] **DONE** P0: `WorkflowTab.jsx` — 3-column kanban (open/in_progress/resolved) with task edit modal (status switcher + resolution notes + assignee), account filter.
 - [x] **DONE** P0: Wired both tabs into `NPSCsatPage.jsx`; tested e2e (`/app/test_reports/iteration_7.json`, 19/19 pytest + 100% frontend).
-- [ ] P1: Add rate-limiting on `POST /api/voc/insights/generate` (prevent runaway LLM spend) — `rl_check('voc_insight_gen', user_id, 5, 3600)`.
+- [ ] P1: Add rate-limiting on `POST /api/voc/insights/generate` (prevent runaway LLM spend) — `rl_check('voc_insight_gen', user_id, 5, 3600)`. ✅ **DONE** Feb 2026 — verified 6th call returns HTTP 429.
 - [ ] P1: Phase 4 — RLS security layer, DB indexes on `voc_responses(submitted_at)`, response caching for dashboard endpoints.
-- [ ] P1: Optimistic UI in `WorkflowTab.handleSave` (avoid full re-load on every edit).
+- [ ] P1: Optimistic UI in `WorkflowTab.handleSave` (avoid full re-load on every edit). ✅ **DONE** Feb 2026 — local state + rollback on error.
 - [ ] P1: Eliminate N+1 queries in `voc_workflow_list` (use `joinedload` or batched IN-query).
 - [ ] P2: Convert `voc_ai_insights.insights_json` (TEXT) → JSONB for future server-side filtering.
 - [ ] P2: Refactor `/app/backend/server.py` (~5,140 lines) → `/app/backend/routers/voc_phase{1,2,3}.py` modules.

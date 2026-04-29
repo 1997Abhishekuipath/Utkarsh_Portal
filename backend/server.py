@@ -4761,6 +4761,10 @@ async def voc_insights_generate(
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OpenRouter not configured")
 
+    # Rate limit: max 5 LLM generations per user per hour (LLM calls cost $)
+    rl_check('voc_insight_gen', current_user.id, 5, 3600,
+             detail="Too many insight generations. Max 5 per hour — try again later.")
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, body.days or 90))
     q = db.query(VocResponseDB).filter(VocResponseDB.submitted_at >= cutoff)
     if body.account_id:

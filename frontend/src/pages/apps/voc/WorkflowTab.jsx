@@ -68,13 +68,35 @@ export default function WorkflowTab() {
   const handleSave = async () => {
     if (!editing) return;
     setSaving(true); setError(null);
+
+    // Optimistic update — apply changes locally before API call
+    const prevTasks = tasks;
+    const prevStats = stats;
+    const oldStatus = editing.status;
+    const updatedTask = {
+      ...editing,
+      status: newStatus,
+      resolution_notes: notes,
+      resolved_at: newStatus === "resolved" ? new Date().toISOString() : null,
+    };
+    setTasks(ts => ts.map(t => t.id === editing.id ? updatedTask : t));
+    if (oldStatus !== newStatus) {
+      setStats(s => ({
+        ...s,
+        [oldStatus]: Math.max(0, (s[oldStatus] || 0) - 1),
+        [newStatus]: (s[newStatus] || 0) + 1,
+      }));
+    }
+    setEditing(null);
+
     try {
       await axios.patch(`${API}/voc/workflow/tasks/${editing.id}`,
         { status: newStatus, resolution_notes: notes },
         { headers: authHeader() });
-      setEditing(null);
-      await load();
     } catch (e) {
+      // Rollback on failure
+      setTasks(prevTasks);
+      setStats(prevStats);
       setError(e?.response?.data?.detail || "Failed to update task");
     } finally {
       setSaving(false);

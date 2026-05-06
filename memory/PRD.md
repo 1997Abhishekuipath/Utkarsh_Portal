@@ -21,6 +21,12 @@ Build a modern enterprise-grade Customer Management Portal with a professional r
 - **Manager** — create/update on customers/products/licenses; cannot delete or manage users
 - **Viewer** — read-only across all data
 
+## Implemented (Iteration 3 - Feb 6, 2026)
+- **File attachments** for both customers and licenses via Emergent object storage (10 MB limit; PDF/PNG/JPG/DOCX/XLSX/CSV/TXT/PPT). Endpoints: `POST /api/attachments/upload`, `GET /api/attachments/{entity_type}/{entity_id}`, `GET /api/attachments/{file_id}/download`, `DELETE /api/attachments/{file_id}` (soft-delete). Documents tab inside customer & license edit dialogs.
+- **Renewal History** — every license PUT writes an immutable snapshot to `renewal_history` with field-level diff (from→to). New endpoint `GET /api/licenses/{id}/history`. History tab visible inside license edit dialog with chronological diff view.
+- **Drag-and-drop dashboard widgets** using `@dnd-kit/core` + `@dnd-kit/sortable` (any widget anywhere in active list); hidden widgets shown below; toggle to add/remove; persisted per-user.
+- 75/75 backend tests passing (regression + new iter3 tests). Route shadowing bug for download fixed (download declared before list endpoint).
+
 ## Implemented (Iteration 2 - Feb 6, 2026)
 - **Resend email integration** (`RESEND_API_KEY` placeholder in `.env`; admin sets it to activate)
 - Email alert config `/api/alerts/config`, manual digest `/api/alerts/run-digest`, test email `/api/alerts/test-email`

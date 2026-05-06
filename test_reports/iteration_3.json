@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 3 testing complete. Backend: 22/22 iter3 tests pass + 53/53 regression (iter1+iter2) = 75/75 total. Found and FIXED a HIGH-priority route-shadowing bug for /api/attachments/{file_id}/download (was being matched by /api/attachments/{entity_type}/{entity_id} which returned an empty list with 200 instead of the file). Frontend: Customer & License edit dialogs render the new tabs (Details/Documents and Details/Documents/History) correctly, file upload/list/download/delete works end-to-end via UI (verified upload created row, delete reduced row count from 2->1), Dashboard Customize sheet shows 13 drag handles for sortable widgets, toggle and Reset to Default work. Renewal history versioning works (PUT licenses creates immutable snapshot, no-op PUT creates none, newest first ordering).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Edit Customer/License dialogs and Customize sheet", "issues": ["Pre-existing a11y warning 'Missing Description or aria-describedby for DialogContent' on dialogs/sheets — same as iter2, still not fixed."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter3_results.xml",
+    "/app/test_reports/pytest/iter3_full_results.xml"
+  ],
+  "action_items": [
+    "LOW (a11y, repeat from iter2): Add <DialogDescription> / aria-describedby to Edit Customer dialog, Edit License dialog, Customize Dashboard sheet, Bulk Import dialog, Custom Report sheet to silence Radix warnings."
+  ],
+  "critical_code_review_comments": [
+    "FIXED in this iteration: Route ordering bug — GET /api/attachments/{file_id}/download was registered AFTER GET /api/attachments/{entity_type}/{entity_id}, so FastAPI matched the latter first and returned an empty list (200) for any download URL. Reordered routes in /app/backend/server.py so download is declared first. This is the SAME route-ordering pitfall that hit /customers/template.csv in iter2 — strongly recommend a hard rule: any path-parameter route that overlaps a static-segment route must be declared after the static one. Consider adding a startup test that issues a HEAD probe to all attachments routes.",
+    "/app/backend/server.py is now 1365 lines. Same recommendation as iter2 to split into routers/ modules (auth, customers, products, licenses, attachments, history, reports, dashboard).",
+    "License diff in update_license uses dict equality (existing.get(k) != v). For float fields, repeated PUTs with equivalent floats are fine here, but be aware that JSON round-trip can introduce 0.0 vs 0 distinctions. Currently no issue observed.",
+    "Attachments: storage_put falls back to a refresh on 403 — nice. But storage_get also retries on 403; consider caching the storage_key with a TTL or persisting failures so init_storage doesn't hammer the integration on cold paths.",
+    "Attachment listing uses path params for entity_type which can be any string; the upload endpoint validates {customer, license} but the list endpoint does NOT — calling GET /api/attachments/foo/bar returns []. Consider validating entity_type and returning 400 on unknown to avoid silent passthrough.",
+    "renewal_history records snapshot_after but not snapshot_before — only the diff. If a field is later added to the schema, you can't reconstruct earlier states with full fidelity. Consider also storing snapshot_before for full audit trail.",
+    "Attachments soft-delete sets is_deleted=true but the file is NOT removed from object storage. Storage cost will grow. Add a periodic cleanup job that purges objects of records older than X days with is_deleted=true.",
+    "MAX_UPLOAD_BYTES enforced AFTER reading file fully into memory (await file.read()). For 10 MB this is fine but large uploads risk OOM. Consider using request.headers.get('content-length') for early rejection."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (reordered /attachments/{file_id}/download to be declared before /attachments/{entity_type}/{entity_id})",
+    "/app/backend/tests/test_iteration2.py (updated 2 template.csv tests to new /api/templates/customers.csv and /api/templates/licenses.csv paths after iter2 fix)",
+    "/app/backend/tests/test_iteration3.py (NEW — 22 tests covering attachments full lifecycle, role gating, renewal history, smoke regression)"
+  ],
+  "success_rate": {"backend": "100% (75/75)", "frontend": "100% on tested admin flows; viewer-no-upload step skipped due to logout-btn selector timeout in test script (backend test_upload_viewer_forbidden already proves the role gate)"},
+  "test_credentials": "admin@cmportal.com/Admin@123, manager@cmportal.com/Manager@123, viewer@cmportal.com/Viewer@123 — all verified.",
+  "seed_data_creation": "Test suite creates and cleans up TEST_-prefixed customers, products and licenses inside test_iteration3.py. Two attachments uploaded against the seeded customer remain in the live customer (one was soft-deleted via the test).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/ -v` for full regression — currently 75/75 green. The download endpoint was fixed by REORDERING the FastAPI route declarations in server.py (move /attachments/{file_id}/download ABOVE /attachments/{entity_type}/{entity_id}). If main agent later splits server.py into routers, ensure this ordering is preserved. Frontend testids verified present: tab-details, tab-attachments, lic-tab-details, lic-tab-attachments, lic-tab-history, attachment-file-input, attachment-desc-input, attachment-row-{id}, download-attachment-{id}, delete-attachment-{id}, history-{id}, drag-{widget_key}, customize-dashboard-btn, widget-toggle-*, reset-widgets-btn. Storage upload to Emergent objstore is REAL and working. Resend email is still placeholder (returns sent:false by design).",
+  "rca_of_the_issue": "GET /api/attachments/<file_id>/download returned 200 with empty array []. RCA: In /app/backend/server.py, /attachments/{entity_type}/{entity_id} was declared before /attachments/{file_id}/download. FastAPI matches routes in declaration order, so 'download' was treated as entity_id and the list endpoint returned an empty list. Fix: moved download endpoint above the list endpoint. Verified by re-running test_iteration3.py — all 22 tests now pass."
+}

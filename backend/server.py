@@ -16,6 +16,7 @@ import asyncio
 import bcrypt
 import jwt
 import resend
+import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File, Form
@@ -32,8 +33,66 @@ JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+APP_NAME = os.environ.get("APP_NAME", "cmportal")
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+storage_key: Optional[str] = None
 if RESEND_API_KEY and not RESEND_API_KEY.startswith("re_placeholder"):
     resend.api_key = RESEND_API_KEY
+
+
+def init_storage() -> Optional[str]:
+    """Initialize storage session. Returns storage_key or None on failure."""
+    global storage_key
+    if storage_key:
+        return storage_key
+    if not EMERGENT_LLM_KEY:
+        return None
+    try:
+        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_LLM_KEY}, timeout=30)
+        resp.raise_for_status()
+        storage_key = resp.json()["storage_key"]
+        return storage_key
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
+        return None
+
+
+def storage_put(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120,
+    )
+    if resp.status_code == 403:
+        # refresh key once
+        global storage_key
+        storage_key = None
+        key = init_storage()
+        resp = requests.put(
+            f"{STORAGE_URL}/objects/{path}",
+            headers={"X-Storage-Key": key, "Content-Type": content_type},
+            data=data, timeout=120,
+        )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def storage_get(path: str) -> tuple:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 403:
+        global storage_key
+        storage_key = None
+        key = init_storage()
+        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -493,11 +552,29 @@ async def create_license(payload: LicenseIn, user: dict = Depends(require_manage
 @api.put("/licenses/{lid}")
 async def update_license(lid: str, payload: LicenseIn, user: dict = Depends(require_manager)):
     update = payload.model_dump()
+    existing = await db.licenses.find_one({"id": lid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Compute diff
+    changes = {}
+    for k, v in update.items():
+        if existing.get(k) != v:
+            changes[k] = {"from": existing.get(k), "to": v}
+    if changes:
+        await db.renewal_history.insert_one({
+            "id": str(uuid.uuid4()),
+            "license_id": lid,
+            "changed_by": user["email"],
+            "changed_by_id": user["id"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "changes": changes,
+            "snapshot_after": update,
+        })
     res = await db.licenses.update_one({"id": lid}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
-    await log_activity(user, "update", "license", lid)
-    return {"ok": True}
+    await log_activity(user, "update", "license", lid, f"{len(changes)} fields changed")
+    return {"ok": True, "changes": len(changes)}
 
 @api.delete("/licenses/{lid}")
 async def delete_license(lid: str, user: dict = Depends(require_admin)):
@@ -1165,6 +1242,102 @@ async def run_custom_report(payload: CustomReportIn, user: dict = Depends(get_cu
         rows = [{c: r.get(c, "") for c in payload.columns} for r in rows]
     return rows
 
+# ----------------- Renewal History -----------------
+@api.get("/licenses/{lid}/history")
+async def license_history(lid: str, user: dict = Depends(get_current_user)):
+    history = await db.renewal_history.find({"license_id": lid}, {"_id": 0}).sort("timestamp", -1).to_list(200)
+    return history
+
+# ----------------- File Attachments -----------------
+ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif", "webp", "doc", "docx", "xls", "xlsx", "txt", "csv", "ppt", "pptx"}
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+@api.post("/attachments/upload")
+async def upload_attachment(
+    file: UploadFile = File(...),
+    entity_type: str = Form(...),  # "customer" or "license"
+    entity_id: str = Form(...),
+    description: str = Form(""),
+    user: dict = Depends(require_manager),
+):
+    if entity_type not in ("customer", "license"):
+        raise HTTPException(status_code=400, detail="entity_type must be customer or license")
+    ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "").lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type .{ext} not allowed")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 10 MB limit")
+    # validate parent
+    coll = db.customers if entity_type == "customer" else db.licenses
+    if not await coll.find_one({"id": entity_id}):
+        raise HTTPException(status_code=404, detail="Parent record not found")
+    file_id = str(uuid.uuid4())
+    path = f"{APP_NAME}/attachments/{entity_type}/{entity_id}/{file_id}.{ext}"
+    content_type = file.content_type or "application/octet-stream"
+    try:
+        result = storage_put(path, data, content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+    doc = {
+        "id": file_id,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "storage_path": result["path"],
+        "filename": file.filename,
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "description": description,
+        "uploaded_by": user["email"],
+        "uploaded_by_id": user["id"],
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "is_deleted": False,
+    }
+    await db.attachments.insert_one(doc)
+    await log_activity(user, "upload", "attachment", file_id, f"{file.filename} for {entity_type} {entity_id}")
+    doc.pop("_id", None)
+    return doc
+
+@api.get("/attachments/{file_id}/download")
+async def download_attachment(file_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.attachments.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        data, ct = storage_get(rec["storage_path"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Download failed: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
+    return Response(
+        content=data,
+        media_type=rec.get("content_type", ct),
+        headers={"Content-Disposition": f'inline; filename="{rec["filename"]}"'},
+    )
+
+@api.get("/attachments/{entity_type}/{entity_id}")
+async def list_attachments(entity_type: str, entity_id: str, user: dict = Depends(get_current_user)):
+    rows = await db.attachments.find(
+        {"entity_type": entity_type, "entity_id": entity_id, "is_deleted": False},
+        {"_id": 0}
+    ).sort("uploaded_at", -1).to_list(200)
+    return rows
+
+@api.delete("/attachments/{file_id}")
+async def delete_attachment(file_id: str, user: dict = Depends(require_manager)):
+    res = await db.attachments.update_one(
+        {"id": file_id, "is_deleted": False},
+        {"$set": {"is_deleted": True, "deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": user["email"]}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    await log_activity(user, "delete", "attachment", file_id)
+    return {"ok": True}
+
 # ----------------- Health -----------------
 @api.get("/")
 async def root():
@@ -1184,6 +1357,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await seed_data()
+    init_storage()
 
 @app.on_event("shutdown")
 async def on_shutdown():

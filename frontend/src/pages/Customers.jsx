@@ -7,6 +7,7 @@ import { Plus, Search, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { StatusBadge } from "../components/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
@@ -14,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { exportCSV, exportPDF } from "../lib/export";
 import BulkImport from "../components/BulkImport";
+import Attachments from "../components/Attachments";
 
 const empty = {
   company_name: "", customer_name: "", contact_number: "", email: "",
@@ -183,7 +185,13 @@ export default function Customers() {
           <DialogHeader>
             <DialogTitle className="font-display">{editId ? "Edit Customer" : "New Customer"}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <Tabs defaultValue="details" className="mt-2">
+            <TabsList className="bg-transparent border-b w-full justify-start rounded-none p-0 h-auto">
+              <TabsTrigger value="details" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-details">Details</TabsTrigger>
+              {editId && <TabsTrigger value="attachments" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-attachments">Documents</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="details" className="mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               ["company_name", "Company Name *"],
               ["customer_name", "Contact Name *"],
@@ -217,8 +225,15 @@ export default function Customers() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter>
+              </div>
+            </TabsContent>
+            {editId && (
+              <TabsContent value="attachments" className="mt-4">
+                <Attachments entityType="customer" entityId={editId} />
+              </TabsContent>
+            )}
+          </Tabs>
+          <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={save} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="save-customer-btn">Save</Button>
           </DialogFooter>

@@ -102,7 +102,7 @@ class TestAlertsEmail:
 # ---------------- Bulk Import ----------------
 class TestCustomersBulkImport:
     def test_template_csv(self, admin):
-        r = admin.get(f"{API}/customers/template.csv", timeout=20)
+        r = admin.get(f"{API}/templates/customers.csv", timeout=20)
         assert r.status_code == 200
         assert "text/csv" in r.headers.get("content-type", "")
         assert "company_name" in r.text
@@ -145,7 +145,7 @@ class TestCustomersBulkImport:
 
 class TestLicensesBulkImport:
     def test_template_csv(self, admin):
-        r = admin.get(f"{API}/licenses/template.csv", timeout=20)
+        r = admin.get(f"{API}/templates/licenses.csv", timeout=20)
         assert r.status_code == 200
         assert "text/csv" in r.headers.get("content-type", "")
         assert "license_key" in r.text

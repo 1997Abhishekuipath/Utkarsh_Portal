@@ -13,6 +13,13 @@ import { Users, KeyRound, AlertTriangle, DollarSign, TrendingUp, Box, ChevronRig
 import { StatusBadge } from "../components/StatusBadge";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16", "#ec4899"];
 
@@ -51,6 +58,38 @@ function Kpi({ label, value, icon: Icon, accent, sub, testid }) {
   );
 }
 
+function SortableWidget({ id, on, label, group, idx, total, toggle, move }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 p-3 rounded-lg border ${on ? "border-blue-500/30 bg-blue-500/5" : "border-slate-200/60 dark:border-white/10"}`}
+      data-testid={`widget-toggle-${id}`}
+    >
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none" data-testid={`drag-${id}`}>
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{label}</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{group}</p>
+      </div>
+      {on && (
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => move(id, -1)} disabled={idx === 0}>↑</Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => move(id, 1)} disabled={idx === total - 1}>↓</Button>
+        </div>
+      )}
+      <Switch checked={on} onCheckedChange={(v) => toggle(id, v)} />
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [widgets, setWidgets] = useState(null);
@@ -83,6 +122,22 @@ export default function Dashboard() {
     if (j < 0 || j >= widgets.length) return;
     const next = [...widgets];
     [next[i], next[j]] = [next[j], next[i]];
+    setWidgets(next);
+    await api.put("/dashboard/config", { widgets: next });
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const onDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = widgets.indexOf(active.id);
+    const newIdx = widgets.indexOf(over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const next = arrayMove(widgets, oldIdx, newIdx);
     setWidgets(next);
     await api.put("/dashboard/config", { widgets: next });
   };
@@ -144,26 +199,44 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">Show, hide and reorder widgets</p>
             </SheetHeader>
             <div className="mt-6 space-y-2">
-              {Object.keys(WIDGET_META).map(k => {
-                const idx = widgets.indexOf(k);
-                const on = idx !== -1;
-                return (
-                  <div key={k} className={`flex items-center gap-3 p-3 rounded-lg border ${on ? "border-blue-500/30 bg-blue-500/5" : "border-slate-200/60 dark:border-white/10"}`} data-testid={`widget-toggle-${k}`}>
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{WIDGET_META[k].label}</p>
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{WIDGET_META[k].group}</p>
-                    </div>
-                    {on && (
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => move(k, -1)} disabled={idx === 0}>↑</Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => move(k, 1)} disabled={idx === widgets.length - 1}>↓</Button>
+              <p className="text-xs text-muted-foreground mb-3">Drag <GripVertical className="h-3 w-3 inline" /> to reorder. Toggle switches to show or hide.</p>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={widgets} strategy={verticalListSortingStrategy}>
+                  {/* Active (in widgets order) */}
+                  {widgets.map((k, i) => (
+                    WIDGET_META[k] && (
+                      <SortableWidget
+                        key={k}
+                        id={k}
+                        on={true}
+                        label={WIDGET_META[k].label}
+                        group={WIDGET_META[k].group}
+                        idx={i}
+                        total={widgets.length}
+                        toggle={toggle}
+                        move={move}
+                      />
+                    )
+                  ))}
+                </SortableContext>
+              </DndContext>
+
+              {/* Hidden widgets (not in widgets array) shown below as toggles */}
+              {Object.keys(WIDGET_META).filter(k => !widgets.includes(k)).length > 0 && (
+                <>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground mt-5 mb-2">Hidden</p>
+                  {Object.keys(WIDGET_META).filter(k => !widgets.includes(k)).map(k => (
+                    <div key={k} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200/60 dark:border-white/10 opacity-60" data-testid={`widget-toggle-${k}`}>
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{WIDGET_META[k].label}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{WIDGET_META[k].group}</p>
                       </div>
-                    )}
-                    <Switch checked={on} onCheckedChange={(v) => toggle(k, v)} />
-                  </div>
-                );
-              })}
+                      <Switch checked={false} onCheckedChange={(v) => toggle(k, v)} />
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
             <Button variant="outline" className="w-full mt-6" onClick={resetDefault} data-testid="reset-widgets-btn">Reset to Default</Button>
           </SheetContent>

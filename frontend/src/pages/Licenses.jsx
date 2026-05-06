@@ -10,11 +10,14 @@ import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { exportCSV, exportPDF } from "../lib/export";
 import BulkImport from "../components/BulkImport";
+import Attachments from "../components/Attachments";
+import RenewalHistory from "../components/RenewalHistory";
 
 const empty = {
   customer_id: "", product_id: "", license_key: "",
@@ -198,7 +201,14 @@ export default function Licenses() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="glass-strong max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="font-display">{editId ? "Edit License" : "New License"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <Tabs defaultValue="details" className="mt-2">
+            <TabsList className="bg-transparent border-b w-full justify-start rounded-none p-0 h-auto">
+              <TabsTrigger value="details" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="lic-tab-details">Details</TabsTrigger>
+              {editId && <TabsTrigger value="attachments" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="lic-tab-attachments">Documents</TabsTrigger>}
+              {editId && <TabsTrigger value="history" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="lic-tab-history">History</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="details" className="mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Customer *</Label>
               <Select value={form.customer_id} onValueChange={(v) => setForm({ ...form, customer_id: v })}>
@@ -272,8 +282,20 @@ export default function Licenses() {
               <Label>Auto-Renewal Enabled</Label>
             </div>
             <div className="sm:col-span-2"><Label>Notes</Label><Textarea rows={2} className="mt-1" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-          </div>
-          <DialogFooter>
+              </div>
+            </TabsContent>
+            {editId && (
+              <TabsContent value="attachments" className="mt-4">
+                <Attachments entityType="license" entityId={editId} />
+              </TabsContent>
+            )}
+            {editId && (
+              <TabsContent value="history" className="mt-4">
+                <RenewalHistory licenseId={editId} />
+              </TabsContent>
+            )}
+          </Tabs>
+          <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={save} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="save-license-btn">Save</Button>
           </DialogFooter>

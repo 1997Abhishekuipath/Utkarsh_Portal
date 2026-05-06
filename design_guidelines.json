@@ -1,0 +1,113 @@
+{
+  "theme_and_archetype": {
+    "domain": "Enterprise SaaS Dashboard (Customer Management Portal)",
+    "theme": "Light & Dark Toggle",
+    "archetype": "Archetype 4 (Swiss & High-Contrast) + The 'Crystal' Glassmorphism Variant",
+    "rationale": "Enterprise dashboards demand authority, clarity, and function-first data visualization. The Crystal glassmorphism elevates the UI to a premium 'ServiceNow/Freshservice' tier, avoiding flat generic cards."
+  },
+  "typography": {
+    "headings": {
+      "family": "'Outfit', sans-serif",
+      "import_url": "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap",
+      "style": "Clean, structured, geometric. Tracking-tight for large headings.",
+      "sizes": {
+        "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
+        "h2": "text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight",
+        "h3": "text-lg sm:text-xl font-medium tracking-tight"
+      }
+    },
+    "body": {
+      "family": "'Inter', sans-serif",
+      "import_url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap",
+      "style": "Sterile, objective, highly readable for dense data tables.",
+      "sizes": {
+        "base": "text-sm sm:text-base leading-relaxed",
+        "small": "text-xs sm:text-sm font-medium text-muted-foreground",
+        "overline": "text-[10px] uppercase tracking-[0.2em] font-bold"
+      }
+    }
+  },
+  "color_palette": {
+    "primary": {
+      "light": "#2563EB", 
+      "dark": "#3B82F6", 
+      "tailwind": "blue-600",
+      "description": "Enterprise trust blue. Use sparingly for primary CTAs and active states."
+    },
+    "background": {
+      "light": "bg-[#F8FAFC]", 
+      "dark": "bg-[#030712]", 
+      "description": "Deepest midnight for dark mode to support glowing glassmorphism; stark tinted grey for light mode."
+    },
+    "surface": {
+      "light": "bg-white/70 backdrop-blur-xl border border-slate-200/50 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.05)]",
+      "dark": "bg-slate-900/60 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+      "description": "Crystal glassmorphism for cards, sidebars, and modals. Must have 1px inner border to pop."
+    },
+    "status_badges": {
+      "active": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+      "expiring_soon": "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+      "expired": "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20"
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": "The 'Control Room' Grid",
+    "dashboard_layout": {
+      "container": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "kpi_cards": "col-span-1",
+      "main_chart": "col-span-1 md:col-span-2 lg:col-span-3 row-span-2",
+      "feed_list": "col-span-1 row-span-2"
+    },
+    "spacing_scale": {
+      "internal_padding": "p-6 or p-8 (Crucial for glassmorphic cards to breathe)",
+      "section_gap": "gap-8"
+    },
+    "sidebar": "w-64 flex-shrink-0 sticky top-0 h-screen transition-all duration-300 glassmorphism-surface"
+  },
+  "component_strategy": {
+    "cards": "Do not use standard flat Shadcn Cards. Override Shadcn Card background with the Surface Crystal utility defined in the color_palette.",
+    "tables": "Use Shadcn Table. Dense styling. Header background transparent. Row hover should be bg-slate-100/50 (light) or bg-white/5 (dark). Text must be text-sm.",
+    "buttons": "Shadcn standard buttons, but add hover:scale-[1.02] active:scale-95 transition-transform.",
+    "charts": "Use Shadcn Charts (Recharts). Color arrays must match primary + status colors. Do not use random D3 libraries for standard admin charts.",
+    "inputs": "Shadcn inputs. Focus state must be: focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1."
+  },
+  "animations": {
+    "micro_interactions": "All buttons and table rows must have transition-colors duration-200. Hover states must explicitly define both bg and text.",
+    "page_load": "Framer Motion staggered fade-in for dashboard widgets (staggerChildren: 0.1)."
+  },
+  "media_and_assets": {
+    "icons": {
+      "library": "lucide-react",
+      "usage": "Use stroke-width 1.5 for a sophisticated, lighter enterprise feel."
+    },
+    "images": [
+      {
+        "category": "login_background_dark",
+        "url": "https://static.prod-images.emergentagent.com/jobs/38498a33-99c9-4fc2-81a0-fe2164ce3341/images/4977c5cbffc8b976fd9292b9ef8aef9076aafaf6b75959cf3bc8d45a0ab6dad6.png",
+        "description": "Abstract high-end glassmorphism background for dark mode login screen. Full screen cover."
+      },
+      {
+        "category": "login_background_light",
+        "url": "https://static.prod-images.emergentagent.com/jobs/38498a33-99c9-4fc2-81a0-fe2164ce3341/images/f90816a41424e7db958c75bddddb253c24269746d07abdc9ac0b67d74bcbd9a1.png",
+        "description": "Abstract high-end glassmorphism background for light mode login screen. Full screen cover."
+      },
+      {
+        "category": "admin_avatar",
+        "url": "https://static.prod-images.emergentagent.com/jobs/38498a33-99c9-4fc2-81a0-fe2164ce3341/images/33ae3465ab1e76e99c5a6a6add11ba6a74078d7751edf1a09fd4c0892ab32147.png",
+        "description": "Professional portrait for the admin user profile in the top-right header."
+      }
+    ]
+  },
+  "accessibility_and_testing": {
+    "contrast": "Always verify APCA standards on text overlaying glassmorphic backgrounds. Use text-shadow if necessary on backgrounds.",
+    "testing_ids": "Every interactive element MUST have a data-testid attribute (e.g., data-testid='login-submit-btn', data-testid='sidebar-nav-customers')."
+  },
+  "instructions_to_main_agent": [
+    "Prioritize building the structural layout first: A responsive sidebar and a top header containing theme toggler and profile avatar.",
+    "Implement the ThemeProvider early to support light/dark toggle seamlessly.",
+    "For the UI, strictly apply the 'Crystal' glassmorphism classes to all major container cards (Dashboards, Tables, Modals).",
+    "Build the dashboard grid using the defined 'Control Room' specs (lg:grid-cols-4).",
+    "Ensure all data tables (Customers, Licenses, Products) have search/filter inputs and use the precise status badge color classes.",
+    "Do not invent fake logos; use Lucide icons (e.g., Command or Hexagon) for the app brand logo."
+  ]
+}

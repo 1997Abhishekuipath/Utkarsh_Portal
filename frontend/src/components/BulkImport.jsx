@@ -25,7 +25,7 @@ export default function BulkImport({ open, onOpenChange, entity, onDone }) {
   };
 
   const downloadTemplate = async () => {
-    const { data } = await api.get(`/${entity}/template.csv`, { responseType: "blob" });
+    const { data } = await api.get(`/templates/${entity}.csv`, { responseType: "blob" });
     const url = URL.createObjectURL(new Blob([data]));
     const a = document.createElement("a");
     a.href = url;

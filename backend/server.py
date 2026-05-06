@@ -1063,13 +1063,13 @@ async def licenses_bulk_import(file: UploadFile = File(...), mode: str = Form("u
     await log_activity(user, "bulk-import", "licenses", "", f"+{inserted} ~{updated} skip={skipped}")
     return {"inserted": inserted, "updated": updated, "skipped": skipped, "total": len(rows), "errors": errors[:20]}
 
-@api.get("/customers/template.csv")
+@api.get("/templates/customers.csv")
 async def customers_template(user: dict = Depends(get_current_user)):
     headers = "company_name,customer_name,contact_number,email,address,country,state,city,gst_number,pan_number,support_contact_person,support_contact_number,account_manager,status,customer_code\n"
     sample = "Acme Corp,John Doe,+1-555-0001,john@acme.com,100 Main St,USA,CA,SF,GSTXXX,PANXXX,Jane Smith,+1-555-0002,Account Mgr,Active,\n"
     return Response(content=headers + sample, media_type="text/csv")
 
-@api.get("/licenses/template.csv")
+@api.get("/templates/licenses.csv")
 async def licenses_template(user: dict = Depends(get_current_user)):
     headers = "license_key,customer_email,product_name,license_type,license_count,subscription_type,purchase_date,activation_date,expiry_date,renewal_date,cost,currency,invoice_number,po_number,support_expiry,warranty_expiry,auto_renewal,notes\n"
     sample = "ABCD-1234-EFGH-5678,john@acme.com,Microsoft Office 365,Subscription,5,Annual,2025-01-01,2025-01-01,2026-01-01,2026-01-01,1500,USD,INV-001,PO-001,2026-01-01,2026-01-01,true,Renewed annually\n"

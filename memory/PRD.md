@@ -21,6 +21,18 @@ Build a modern enterprise-grade Customer Management Portal with a professional r
 - **Manager** — create/update on customers/products/licenses; cannot delete or manage users
 - **Viewer** — read-only across all data
 
+## Implemented (Iteration 2 - Feb 6, 2026)
+- **Resend email integration** (`RESEND_API_KEY` placeholder in `.env`; admin sets it to activate)
+- Email alert config `/api/alerts/config`, manual digest `/api/alerts/run-digest`, test email `/api/alerts/test-email`
+- Daily digest HTML template with 90/60/30/Expired buckets
+- **Bulk CSV import/update** for customers (`/api/customers/bulk-import`) and licenses (`/api/licenses/bulk-import`) with modes: upsert/insert/update; resolves customer by email/customer_code, product by product_name; supports updating `license_count`
+- CSV templates at `/api/templates/customers.csv` and `/api/templates/licenses.csv`
+- **Per-user customizable dashboard** (`/api/dashboard/config`) — show/hide + reorder all 13 widgets
+- **Custom reports** (`/api/custom-reports`) — entity selector, column picker, filters (status, vendor, expiry date range), save & re-run
+- Settings → Email Alerts admin-only card (recipients, cadence, run-now, test send)
+- UI polish: sticky table headers in reports, smoother card hover, animated buttons
+- 52/53 backend tests passing (route ordering bug for template.csv was fixed by moving templates to `/api/templates/*`)
+
 ## Implemented (Iteration 1 - Feb 6, 2026)
 - JWT auth with login/logout/me/refresh + brute-force protection (5 attempts/15min)
 - Role-based RBAC across all entity routes

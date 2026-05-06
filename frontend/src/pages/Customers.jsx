@@ -3,7 +3,7 @@ import api from "../lib/api";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { Plus, Search, Pencil, Trash2, Download } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { StatusBadge } from "../components/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
@@ -13,6 +13,7 @@ import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { exportCSV, exportPDF } from "../lib/export";
+import BulkImport from "../components/BulkImport";
 
 const empty = {
   company_name: "", customer_name: "", contact_number: "", email: "",
@@ -30,6 +31,7 @@ export default function Customers() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
 
@@ -91,6 +93,11 @@ export default function Customers() {
           <Button variant="outline" onClick={() => exportPDF("Customers Report", list, columns)} data-testid="export-pdf-btn">
             <Download className="h-4 w-4 mr-2" /> PDF
           </Button>
+          {canWrite && (
+            <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="bulk-import-customers-btn">
+              <Upload className="h-4 w-4 mr-2" /> Bulk Import
+            </Button>
+          )}
           {canWrite && (
             <Button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="add-customer-btn">
               <Plus className="h-4 w-4 mr-2" /> Add Customer
@@ -217,6 +224,8 @@ export default function Customers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkImport open={bulkOpen} onOpenChange={setBulkOpen} entity="customers" onDone={load} />
     </div>
   );
 }

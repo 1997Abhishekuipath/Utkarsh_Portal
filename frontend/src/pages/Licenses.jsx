@@ -3,7 +3,7 @@ import api from "../lib/api";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { Plus, Search, Pencil, Trash2, Download } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
@@ -14,6 +14,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { exportCSV, exportPDF } from "../lib/export";
+import BulkImport from "../components/BulkImport";
 
 const empty = {
   customer_id: "", product_id: "", license_key: "",
@@ -35,6 +36,7 @@ export default function Licenses() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
 
@@ -109,6 +111,7 @@ export default function Licenses() {
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => exportCSV("licenses", list, cols)} data-testid="export-licenses-csv"><Download className="h-4 w-4 mr-2" /> CSV</Button>
           <Button variant="outline" onClick={() => exportPDF("Licenses Report", list, cols)} data-testid="export-licenses-pdf"><Download className="h-4 w-4 mr-2" /> PDF</Button>
+          {canWrite && <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="bulk-import-licenses-btn"><Upload className="h-4 w-4 mr-2" /> Bulk Import</Button>}
           {canWrite && <Button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="add-license-btn"><Plus className="h-4 w-4 mr-2" /> Add License</Button>}
         </div>
       </div>

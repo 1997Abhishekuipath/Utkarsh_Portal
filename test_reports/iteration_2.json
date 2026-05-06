@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 2 testing: 52/53 backend tests pass (1 bug found), frontend smoke tests for all new features pass. All Iter1 regression tests still pass. Tested alerts config/test-email/digest, bulk import (customers + licenses), dashboard config, custom reports. Verified admin-only vs manager/viewer role gating across new endpoints. Frontend: Customize Dashboard sheet shows 13 widget toggles; Bulk Import dialogs render with file+mode+submit; Custom Report sheet has run/save; Settings > Email Alerts card is admin-only (viewer correctly does not see it).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/customers/template.csv",
+        "issue": "Returns 404. Route is shadowed by GET /api/customers/{cid} which is registered first in server.py (line 341 defined before line 1066). FastAPI matches /customers/{cid} first, treats 'template.csv' as a customer id and returns 404 'Not found'. /api/licenses/template.csv works because there is no GET /licenses/{lid}. Fix: move the template.csv routes above the /{cid} routes (or register them in a sub-path like /api/customers-template.csv).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dialogs/Sheets", "issues": ["Non-blocking: React warning 'Missing Description or aria-describedby for DialogContent' on Customize Dashboard, Bulk Import, and Custom Report sheets. Add <DialogDescription> (or aria-describedby) for a11y."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix GET /api/customers/template.csv route shadowing — move template route registration above /customers/{cid}, or rename the path. Frontend 'Download template' button on the Customers Bulk Import dialog will currently fail with 404.",
+    "LOW: Add DialogDescription / aria-describedby to BulkImport, Customize Dashboard, Custom Report sheets (a11y warnings)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1191 lines — exceeds the 700-line guideline. Strongly recommend splitting into routers/{auth,customers,products,licenses,reports,users,alerts,bulk_import,dashboard_config,custom_reports}.py. Email rendering (render_alert_email) and CSV parsing (_parse_csv) could live in dedicated modules.",
+    "Route ordering bug — Path-parameter routes should always be declared AFTER static paths in the same prefix. /customers/{cid} is declared before /customers/template.csv, causing 404. Same risk exists for any future /customers/<static> routes.",
+    "Bulk-import endpoints use File(...) upload and Pydantic payload separately — looks clean. Good use of upsert/insert/update modes and resolve-by-email/code/product_name. Validation errors truncated to 20 entries — reasonable.",
+    "Custom report run endpoint projects columns with r.get(c, '') which silently drops invalid column names; consider returning a warning list for unknown columns.",
+    "run-digest correctly returns sent=false with reason when RESEND_API_KEY is placeholder (no 500) — matches design. resend_configured flag exposed in GET /alerts/config is nice for frontend UX.",
+    "dashboard_configs and custom_reports are per-user (indexed by user_id) — good. Consider adding a unique index on (user_id) for dashboard_configs and (user_id, name) for custom_reports.",
+    "AlertConfigIn uses EmailStr list — proper validation. But PUT /alerts/config has no size cap on recipients; consider max_items=50 to prevent abuse.",
+    "bulk-import POST endpoints do not explicitly validate file content-type/extension; accepts any UploadFile. Low risk since parser decodes as UTF-8 CSV, but consider rejecting non-.csv quickly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py"
+  ],
+  "success_rate": {"backend": "98% (52/53)", "frontend": "100%"},
+  "test_credentials": "admin@cmportal.com/Admin@123, manager@cmportal.com/Manager@123, viewer@cmportal.com/Viewer@123 — all verified working.",
+  "seed_data_creation": "No new persistent seed. Test suite creates TEST_-prefixed customers/licenses/users/reports and cleans them up after each test.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_iteration2.py /app/backend/tests/backend_test.py -v` for full regression (52/53 currently). The single failure (customers/template.csv) will persist until route order is fixed in server.py — once fixed, that test flips to green. Frontend UI testids all verified present: customize-dashboard-btn, widget-toggle-*, bulk-import-customers-btn, bulk-import-licenses-btn, bulk-file-input, bulk-mode-select, bulk-submit-btn, custom-report-btn, run-custom-report-btn, save-custom-report-btn, save-alert-config-btn, run-digest-btn, send-test-btn, alert-recipients-input. Viewer role correctly hides bulk-import buttons and Email Alerts card.",
+  "rca_of_the_issue": "GET /api/customers/template.csv 404 — FastAPI processes routes in registration order. /api/customers/{cid} (declared earlier) matches /api/customers/template.csv first, extracting cid='template.csv', then returns 404 because no customer with that id exists. Reproduction: curl -b cookie 'https://license-hub-56.preview.emergentagent.com/api/customers/template.csv' → 404 {\"detail\":\"Not found\"}. Fix: in server.py, move @api.get('/customers/template.csv') above @api.get('/customers/{cid}')."
+}
